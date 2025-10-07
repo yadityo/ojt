@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
@@ -20,15 +20,30 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const { user } = useAuth();
 
+  // Fetch initial data
   useEffect(() => {
-    fetchRegistrations();
     fetchPrograms();
     fetchStatistics();
+    fetchRegistrations();
+  }, []);
+
+  // Debounced filter effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!loading) {
+        fetchRegistrations();
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
   }, [filters]);
 
-  const fetchRegistrations = async () => {
+  const fetchRegistrations = useCallback(async () => {
     try {
+      setLoading(true);
+      setError("");
       const params = new URLSearchParams();
+
       Object.keys(filters).forEach((key) => {
         if (filters[key] !== "all" && filters[key] !== "") {
           params.append(key, filters[key]);
@@ -39,15 +54,17 @@ const AdminDashboard = () => {
       if (response.data.success) {
         setRegistrations(response.data.data);
       } else {
-        setError("Failed to fetch registrations");
+        setError("Gagal mengambil data pendaftaran");
       }
     } catch (error) {
       console.error("Error fetching registrations:", error);
-      setError("Error loading registration data");
+      setError(
+        error.response?.data?.message || "Error loading registration data"
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   const fetchPrograms = async () => {
     try {
@@ -120,45 +137,27 @@ const AdminDashboard = () => {
       const response = await axios.put(endpoint, data);
       if (response.data.success) {
         // Refresh data
-        fetchRegistrations();
-        fetchStatistics();
-        alert("Status updated successfully");
+        await Promise.all([fetchRegistrations(), fetchStatistics()]);
+        alert("Status berhasil diperbarui");
       }
     } catch (error) {
       console.error("Error updating status:", error);
-      alert("Error updating status");
+      alert(
+        "Error updating status: " +
+          (error.response?.data?.message || error.message)
+      );
     }
   };
 
-  const handleBulkAction = async (action, selectedIds) => {
-    if (!selectedIds.length) {
-      alert("Please select at least one registration");
-      return;
-    }
-
-    if (
-      confirm(
-        `Are you sure you want to ${action} ${selectedIds.length} registration(s)?`
-      )
-    ) {
-      try {
-        // Implement bulk actions here
-        // This is a simplified version - you might want to create separate endpoints for bulk actions
-        for (const id of selectedIds) {
-          await handleUpdateStatus("registration", id, action);
-        }
-        alert(`Successfully updated ${selectedIds.length} registration(s)`);
-      } catch (error) {
-        console.error("Error in bulk action:", error);
-        alert("Error performing bulk action");
-      }
-    }
+  const handleCloseModal = () => {
+    setShowDetailModal(false);
+    setSelectedRegistration(null);
   };
 
   // Helper functions for status badges
   const getPaymentStatusBadge = (status) => {
     const statusConfig = {
-      pending: { class: "bg-warning", text: "Belum Bayar" },
+      pending: { class: "bg-warning text-dark", text: "Belum Bayar" },
       down_payment: { class: "bg-info", text: "DP" },
       paid: { class: "bg-success", text: "Lunas" },
       overdue: { class: "bg-danger", text: "Jatuh Tempo" },
@@ -173,7 +172,7 @@ const AdminDashboard = () => {
 
   const getSelectionStatusBadge = (status) => {
     const statusConfig = {
-      menunggu: { class: "bg-warning", text: "Menunggu" },
+      menunggu: { class: "bg-warning text-dark", text: "Menunggu" },
       lolos_tahap_1: { class: "bg-info", text: "Lolos Tahap 1" },
       lolos_tahap_2: { class: "bg-primary", text: "Lolos Tahap 2" },
       lolos: { class: "bg-success", text: "Lolos" },
@@ -188,7 +187,7 @@ const AdminDashboard = () => {
 
   const getPlacementStatusBadge = (status) => {
     const statusConfig = {
-      proses: { class: "bg-warning", text: "Proses" },
+      proses: { class: "bg-warning text-dark", text: "Proses" },
       lolos: { class: "bg-success", text: "Lolos" },
       ditempatkan: { class: "bg-success", text: "Ditempatkan" },
       gagal: { class: "bg-danger", text: "Gagal" },
@@ -202,7 +201,7 @@ const AdminDashboard = () => {
 
   const getRegistrationStatusBadge = (status) => {
     const statusConfig = {
-      pending: { class: "bg-warning", text: "Menunggu" },
+      pending: { class: "bg-warning text-dark", text: "Menunggu" },
       under_review: { class: "bg-info", text: "Dalam Review" },
       accepted: { class: "bg-success", text: "Diterima" },
       rejected: { class: "bg-danger", text: "Ditolak" },
@@ -215,32 +214,32 @@ const AdminDashboard = () => {
     return <span className={`badge ${config.class}`}>{config.text}</span>;
   };
 
-  if (loading) {
+  if (loading && registrations.length === 0) {
     return (
-      <div className="container mt-4">
+      <div className="container-fluid px-2 px-md-3 mt-3 mt-md-4">
         <div className="d-flex justify-content-center">
           <div className="spinner-border text-primary" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
         </div>
         <div className="text-center mt-3">
-          <p>Loading admin dashboard...</p>
+          <p>Memuat dashboard admin...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && registrations.length === 0) {
     return (
-      <div className="container mt-4">
+      <div className="container-fluid px-2 px-md-3 mt-3 mt-md-4">
         <div className="alert alert-danger" role="alert">
-          <h5>Error Loading Dashboard</h5>
+          <h5>Error Memuat Dashboard</h5>
           <p className="mb-0">{error}</p>
           <button
             className="btn btn-sm btn-outline-danger mt-2"
             onClick={fetchRegistrations}
           >
-            Try Again
+            Coba Lagi
           </button>
         </div>
       </div>
@@ -248,7 +247,7 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="container mt-4">
+    <div className="container-fluid px-2 px-md-3 mt-3 mt-md-4">
       {/* Header */}
       <div className="row mb-4">
         <div className="col-12">
@@ -256,14 +255,13 @@ const AdminDashboard = () => {
             <div>
               <h2 className="mb-1">Admin Dashboard</h2>
               <p className="text-muted mb-0">
-                Manage program registrations and participants
+                Kelola pendaftaran program dan peserta
               </p>
             </div>
             <div className="text-end">
               <p className="mb-0">
-                Welcome, <strong>{user?.full_name}</strong>
+                Selamat datang, <strong>{user?.full_name || "Admin"}</strong>
               </p>
-              <small className="text-muted">Administrator</small>
             </div>
           </div>
         </div>
@@ -271,56 +269,64 @@ const AdminDashboard = () => {
 
       {/* Statistics Cards */}
       {stats && (
-        <div className="row mb-4">
-          <div className="col-md-2">
-            <div className="card bg-primary text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">{stats.statistics.total_registrations}</h4>
-                <p className="mb-0">Total</p>
+        <div className="row g-2 mb-3 mb-md-4">
+          <div className="col-4 col-sm-3 col-md-2 mb-2">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body text-center p-1 p-md-3">
+                <h6 className="mb-1 stats-number">
+                  {stats.statistics?.total_registrations || 0}
+                </h6>
+                <small className="stats-label">Total</small>
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-success text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">
-                  {stats.statistics.accepted_registrations}
-                </h4>
-                <p className="mb-0">Diterima</p>
+          <div className="col-4 col-sm-3 col-md-2 mb-2">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body text-center p-1 p-md-3">
+                <h6 className="mb-1 stats-number">
+                  {stats.statistics?.accepted_registrations || 0}
+                </h6>
+                <small className="stats-label">Diterima</small>
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-warning text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">
-                  {stats.statistics.pending_registrations}
-                </h4>
-                <p className="mb-0">Pending</p>
+          <div className="col-4 col-sm-3 col-md-2 mb-2">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body text-center p-1 p-md-3">
+                <h6 className="mb-1 stats-number">
+                  {stats.statistics?.pending_registrations || 0}
+                </h6>
+                <small className="stats-label">Pending</small>
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-info text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">{stats.statistics.pending_payments}</h4>
-                <p className="mb-0">Pending Bayar</p>
+          <div className="col-4 col-sm-3 col-md-2 mb-2">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body text-center p-1 p-md-3">
+                <h6 className="mb-1 stats-number">
+                  {stats.statistics?.pending_payments || 0}
+                </h6>
+                <small className="stats-label">Pending Bayar</small>
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-secondary text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">{stats.statistics.pending_selections}</h4>
-                <p className="mb-0">Pending Seleksi</p>
+          <div className="col-4 col-sm-3 col-md-2 mb-2">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body text-center p-1 p-md-3">
+                <h6 className="mb-1 stats-number">
+                  {stats.statistics?.pending_selections || 0}
+                </h6>
+                <small className="stats-label">Pending Seleksi</small>
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-dark text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">{stats.statistics.pending_placements}</h4>
-                <p className="mb-0">Pending Penyaluran</p>
+          <div className="col-4 col-sm-3 col-md-2 mb-2">
+            <div className="card bg-primary text-white h-100">
+              <div className="card-body text-center p-1 p-md-3">
+                <h6 className="mb-1 stats-number">
+                  {stats.statistics?.pending_placements || 0}
+                </h6>
+                <small className="stats-label">Pending Penyaluran</small>
               </div>
             </div>
           </div>
@@ -330,7 +336,7 @@ const AdminDashboard = () => {
       {/* Filters Section */}
       <div className="card mb-4">
         <div className="card-header">
-          <h5 className="mb-0">Filters & Search</h5>
+          <h5 className="mb-0">Filter & Pencarian</h5>
         </div>
         <div className="card-body">
           <div className="row g-3">
@@ -341,7 +347,7 @@ const AdminDashboard = () => {
                 value={filters.program}
                 onChange={(e) => handleFilterChange("program", e.target.value)}
               >
-                <option value="all">All Programs</option>
+                <option value="all">Semua Program</option>
                 {programs.map((program) => (
                   <option key={program.id} value={program.id}>
                     {program.name}
@@ -356,7 +362,7 @@ const AdminDashboard = () => {
                 value={filters.status}
                 onChange={(e) => handleFilterChange("status", e.target.value)}
               >
-                <option value="all">All Status</option>
+                <option value="all">Semua Status</option>
                 <option value="pending">Pending</option>
                 <option value="under_review">Under Review</option>
                 <option value="accepted">Accepted</option>
@@ -365,7 +371,7 @@ const AdminDashboard = () => {
               </select>
             </div>
             <div className="col-md-2">
-              <label className="form-label">Payment</label>
+              <label className="form-label">Pembayaran</label>
               <select
                 className="form-select"
                 value={filters.payment_status}
@@ -373,7 +379,7 @@ const AdminDashboard = () => {
                   handleFilterChange("payment_status", e.target.value)
                 }
               >
-                <option value="all">All Payment</option>
+                <option value="all">Semua Status</option>
                 <option value="pending">Pending</option>
                 <option value="down_payment">Down Payment</option>
                 <option value="paid">Paid</option>
@@ -381,7 +387,7 @@ const AdminDashboard = () => {
               </select>
             </div>
             <div className="col-md-2">
-              <label className="form-label">Selection</label>
+              <label className="form-label">Seleksi</label>
               <select
                 className="form-select"
                 value={filters.selection_status}
@@ -389,7 +395,7 @@ const AdminDashboard = () => {
                   handleFilterChange("selection_status", e.target.value)
                 }
               >
-                <option value="all">All Selection</option>
+                <option value="all">Semua Status</option>
                 <option value="menunggu">Menunggu</option>
                 <option value="lolos_tahap_1">Lolos Tahap 1</option>
                 <option value="lolos_tahap_2">Lolos Tahap 2</option>
@@ -398,7 +404,7 @@ const AdminDashboard = () => {
               </select>
             </div>
             <div className="col-md-2">
-              <label className="form-label">Placement</label>
+              <label className="form-label">Penyaluran</label>
               <select
                 className="form-select"
                 value={filters.placement_status}
@@ -406,7 +412,7 @@ const AdminDashboard = () => {
                   handleFilterChange("placement_status", e.target.value)
                 }
               >
-                <option value="all">All Placement</option>
+                <option value="all">Semua Status</option>
                 <option value="proses">Proses</option>
                 <option value="lolos">Lolos</option>
                 <option value="ditempatkan">Ditempatkan</option>
@@ -414,11 +420,11 @@ const AdminDashboard = () => {
               </select>
             </div>
             <div className="col-md-3">
-              <label className="form-label">Search</label>
+              <label className="form-label">Pencarian</label>
               <input
                 type="text"
                 className="form-control"
-                placeholder="Search by name, email, or code..."
+                placeholder="Cari berdasarkan nama, email, atau kode..."
                 value={filters.search}
                 onChange={handleSearchChange}
               />
@@ -435,14 +441,19 @@ const AdminDashboard = () => {
             <button
               className="btn btn-sm btn-outline-secondary me-2"
               onClick={fetchRegistrations}
+              disabled={loading}
             >
-              🔄 Refresh
-            </button>
-            <button
-              className="btn btn-sm btn-outline-primary"
-              onClick={() => window.print()}
-            >
-              🖨️ Print
+              {loading ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" />
+                  Memuat...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-arrow-clockwise me-2"></i>
+                  Refresh
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -450,9 +461,9 @@ const AdminDashboard = () => {
           {registrations.length === 0 ? (
             <div className="text-center py-5">
               <div className="display-1 text-muted mb-3">📋</div>
-              <h5>No registrations found</h5>
+              <h5>Tidak ada data pendaftaran</h5>
               <p className="text-muted">
-                Try changing your filters or search term
+                Coba ubah filter atau kata kunci pencarian Anda
               </p>
             </div>
           ) : (
@@ -469,7 +480,7 @@ const AdminDashboard = () => {
                     <th>Pembayaran</th>
                     <th>Seleksi</th>
                     <th>Penyaluran</th>
-                    <th>Actions</th>
+                    <th>Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -490,7 +501,8 @@ const AdminDashboard = () => {
                         <br />
                         <small className="text-muted">
                           Rp{" "}
-                          {registration.program_cost?.toLocaleString("id-ID")}
+                          {registration.program_training_cost?.toLocaleString("id-ID") ||
+                            "0"}
                         </small>
                       </td>
                       <td>
@@ -507,7 +519,7 @@ const AdminDashboard = () => {
                         {registration.amount_paid > 0 && <br />}
                         {registration.amount_paid > 0 && (
                           <small>
-                            Paid: Rp{" "}
+                            Dibayar: Rp{" "}
                             {registration.amount_paid.toLocaleString("id-ID")}
                           </small>
                         )}
@@ -516,7 +528,7 @@ const AdminDashboard = () => {
                         {getSelectionStatusBadge(registration.selection_status)}
                         {registration.test_score && <br />}
                         {registration.test_score && (
-                          <small>Score: {registration.test_score}</small>
+                          <small>Nilai: {registration.test_score}</small>
                         )}
                       </td>
                       <td>
@@ -527,16 +539,16 @@ const AdminDashboard = () => {
                         )}
                       </td>
                       <td>
-                        <div className="btn-group">
+                        <div className="btn-group btn-group-sm">
                           <button
-                            className="btn btn-sm btn-outline-primary"
+                            className="btn btn-outline-primary"
                             onClick={() => handleViewDetails(registration)}
-                            title="View Details"
+                            title="Lihat Detail"
                           >
-                            👁️
+                            <i className="bi bi-eye"></i>
                           </button>
                           <button
-                            className="btn btn-sm btn-outline-success"
+                            className="btn btn-outline-success"
                             onClick={() =>
                               handleUpdateStatus(
                                 "registration",
@@ -544,12 +556,12 @@ const AdminDashboard = () => {
                                 "accepted"
                               )
                             }
-                            title="Accept"
+                            title="Terima"
                           >
-                            ✅
+                            <i className="bi bi-check"></i>
                           </button>
                           <button
-                            className="btn btn-sm btn-outline-danger"
+                            className="btn btn-outline-danger"
                             onClick={() =>
                               handleUpdateStatus(
                                 "registration",
@@ -557,9 +569,9 @@ const AdminDashboard = () => {
                                 "rejected"
                               )
                             }
-                            title="Reject"
+                            title="Tolak"
                           >
-                            ❌
+                            <i className="bi bi-x"></i>
                           </button>
                         </div>
                       </td>
@@ -578,15 +590,19 @@ const AdminDashboard = () => {
           className="modal fade show d-block"
           tabIndex="-1"
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          onClick={handleCloseModal}
         >
-          <div className="modal-dialog modal-lg modal-dialog-centered">
+          <div
+            className="modal-dialog modal-lg modal-dialog-centered"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Detail Pendaftaran</h5>
                 <button
                   type="button"
                   className="btn-close"
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={handleCloseModal}
                 ></button>
               </div>
               <div className="modal-body">
@@ -613,10 +629,10 @@ const AdminDashboard = () => {
                       {selectedRegistration.program_name}
                     </p>
                     <p>
-                      <strong>Biaya:</strong> Rp{" "}
-                      {selectedRegistration.program_cost?.toLocaleString(
+                      <strong>Biaya Pelatihan:</strong> Rp{" "}
+                      {selectedRegistration.program_training_cost?.toLocaleString(
                         "id-ID"
-                      )}
+                      ) || "0"}
                     </p>
                     <p>
                       <strong>Durasi:</strong>{" "}
@@ -639,7 +655,7 @@ const AdminDashboard = () => {
                     {getPaymentStatusBadge(selectedRegistration.payment_status)}
                     {selectedRegistration.amount_paid > 0 && (
                       <p className="mb-0 small">
-                        Paid: Rp{" "}
+                        Dibayar: Rp{" "}
                         {selectedRegistration.amount_paid?.toLocaleString(
                           "id-ID"
                         )}
@@ -653,7 +669,7 @@ const AdminDashboard = () => {
                     )}
                     {selectedRegistration.test_score && (
                       <p className="mb-0 small">
-                        Score: {selectedRegistration.test_score}
+                        Nilai: {selectedRegistration.test_score}
                       </p>
                     )}
                   </div>
@@ -698,10 +714,11 @@ const AdminDashboard = () => {
                         selectedRegistration.id,
                         "accepted"
                       );
-                      setShowDetailModal(false);
+                      handleCloseModal();
                     }}
                   >
-                    ✅ Terima
+                    <i className="bi bi-check me-2"></i>
+                    Terima
                   </button>
                   <button
                     className="btn btn-danger"
@@ -711,10 +728,11 @@ const AdminDashboard = () => {
                         selectedRegistration.id,
                         "rejected"
                       );
-                      setShowDetailModal(false);
+                      handleCloseModal();
                     }}
                   >
-                    ❌ Tolak
+                    <i className="bi bi-x me-2"></i>
+                    Tolak
                   </button>
                   <button
                     className="btn btn-info"
@@ -724,18 +742,19 @@ const AdminDashboard = () => {
                         selectedRegistration.id,
                         "paid"
                       );
-                      setShowDetailModal(false);
+                      handleCloseModal();
                     }}
                   >
-                    💳 Set Lunas
+                    <i className="bi bi-credit-card me-2"></i>
+                    Set Lunas
                   </button>
                 </div>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={handleCloseModal}
                 >
-                  Close
+                  Tutup
                 </button>
               </div>
             </div>

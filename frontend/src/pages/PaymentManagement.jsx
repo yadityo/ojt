@@ -607,6 +607,17 @@ const PaymentManagement = () => {
                     <p>
                       <strong>Alamat:</strong> {selectedPayment.address}
                     </p>
+                    {selectedPayment.proof_image && (
+                      <div className="mt-3">
+                        <h6 className="fw-bold">Bukti Pembayaran:</h6>
+                        <img
+                          src={`http://localhost:5000/uploads/payments/${selectedPayment.proof_image}`}
+                          alt="Bukti pembayaran"
+                          className="img-fluid rounded"
+                          style={{ maxHeight: "300px" }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="col-md-6">
                     <h6>Informasi Pembayaran</h6>
@@ -622,7 +633,9 @@ const PaymentManagement = () => {
                     </p>
                     <p>
                       <strong>Total Amount:</strong> Rp{" "}
-                      {selectedPayment.amount?.toLocaleString("id-ID")}
+                      {selectedPayment.program_training_cost?.toLocaleString(
+                        "id-ID"
+                      )}
                     </p>
                     <p>
                       <strong>Amount Paid:</strong> Rp{" "}
@@ -638,18 +651,6 @@ const PaymentManagement = () => {
                     </p>
                   </div>
                 </div>
-
-                {selectedPayment.proof_image && (
-                  <div className="mt-3">
-                    <h6>Bukti Pembayaran</h6>
-                    <img
-                      src={`http://localhost:5000/uploads/payments/${selectedPayment.proof_image}`}
-                      alt="Bukti pembayaran"
-                      className="img-fluid rounded"
-                      style={{ maxHeight: "300px" }}
-                    />
-                  </div>
-                )}
 
                 {selectedPayment.notes && (
                   <div className="mt-3">

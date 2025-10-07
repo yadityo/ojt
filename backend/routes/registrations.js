@@ -7,25 +7,6 @@ import {
 
 const router = express.Router();
 
-// Helper function untuk generate registration code
-// const generateRegistrationCode = async (programId) => {
-//   try {
-//     const [program] = await db
-//       .promise()
-//       .query("SELECT name FROM programs WHERE id = ?", [programId]);
-
-//     const programCode = program[0]?.name.substring(0, 3).toUpperCase() || "REG";
-//     const timestamp = Date.now().toString().slice(-6);
-//     const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-
-//     return `${programCode}-${timestamp}-${random}`;
-//   } catch (error) {
-//     console.error("Error generating registration code:", error);
-//     // Fallback code
-//     return `REG-${Date.now().toString().slice(-6)}`;
-//   }
-// };
-
 // Get all registrations with filtering and search
 router.get("/", async (req, res) => {
   try {
@@ -47,6 +28,8 @@ router.get("/", async (req, res) => {
         u.address,
         p.name as program_name,
         p.cost as program_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
         p.duration as program_duration,
         ss.status as selection_status,
         ss.test_score,
@@ -296,21 +279,62 @@ router.get("/statistics/summary", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { program_id, application_letter, placement_preference } = req.body;
+    const {
+      program_id,
+      application_letter,
+      placement_preference,
+      nik,
+      gender,
+      birth_place,
+      birth_date,
+      last_education,
+      parent_phone,
+      ktp_province_code,
+      ktp_province_name,
+      ktp_city_code,
+      ktp_city_name,
+      ktp_address,
+      domicile_province_code,
+      domicile_province_name,
+      domicile_city_code,
+      domicile_city_name,
+      domicile_address,
+      photo_path,
+      user_data = {},
+    } = req.body;
+
     const user_id = req.body.user_id || req.user?.userId;
 
     console.log("Registration request:", {
       user_id,
       program_id,
+      nik,
+      gender,
+      birth_place,
+      birth_date,
+      last_education,
+      parent_phone,
+      ktp_province_code,
+      ktp_province_name,
+      ktp_city_code,
+      ktp_city_name,
+      ktp_address,
+      domicile_province_code,
+      domicile_province_name,
+      domicile_city_code,
+      domicile_city_name,
+      domicile_address,
+      photo_path,
+      user_data,
       application_letter: application_letter?.substring(0, 50) + "...",
       placement_preference,
     });
 
     // Validasi input
-    if (!program_id || !application_letter) {
+    if (!program_id) {
       return res.status(400).json({
         success: false,
-        message: "Program ID dan surat lamaran wajib diisi",
+        message: "Program ID wajib diisi",
       });
     }
 
@@ -381,14 +405,39 @@ router.post("/", async (req, res) => {
     // Insert registration
     const [result] = await db.promise().query(
       `INSERT INTO registrations 
-         (user_id, program_id, registration_code, application_letter, placement_preference, status) 
-         VALUES (?, ?, ?, ?, ?, 'pending')`,
+       (user_id, program_id, registration_code, application_letter, placement_preference, status,
+        nik, gender, birth_place, birth_date, last_education, parent_phone,
+        ktp_province_code, ktp_province_name, ktp_city_code, ktp_city_name, ktp_address,
+        domicile_province_code, domicile_province_name, domicile_city_code, domicile_city_name, domicile_address,
+        photo_path) 
+       VALUES (?, ?, ?, ?, ?, 'pending',
+               ?, ?, ?, ?, ?, ?,
+               ?, ?, ?, ?, ?,
+               ?, ?, ?, ?, ?,
+               ?)`,
       [
         user_id,
         program_id,
         registrationCode,
-        application_letter,
-        placement_preference,
+        application_letter || "Pendaftaran melalui form online",
+        placement_preference || "",
+        nik,
+        gender,
+        birth_place,
+        birth_date,
+        last_education,
+        parent_phone,
+        ktp_province_code,
+        ktp_province_name,
+        ktp_city_code,
+        ktp_city_name,
+        ktp_address,
+        domicile_province_code,
+        domicile_province_name,
+        domicile_city_code,
+        domicile_city_name,
+        domicile_address,
+        photo_path,
       ]
     );
 
@@ -443,7 +492,7 @@ router.post("/", async (req, res) => {
       data: {
         registration_id: registrationId,
         registration_code: registrationCode,
-        invoice_number: invoiceNumber, // Kirim invoice number ke frontend
+        invoice_number: invoiceNumber,
         amount: program.cost,
       },
     });

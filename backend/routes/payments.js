@@ -48,7 +48,9 @@ router.get("/", async (req, res) => {
         u.email,
         u.phone,
         p.name as program_name,
-        p.cost as program_cost
+        p.cost as program_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost
       FROM payments py
       LEFT JOIN registrations r ON py.registration_id = r.id
       LEFT JOIN users u ON r.user_id = u.id
@@ -153,7 +155,9 @@ router.get("/user/:userId", async (req, res) => {
         py.*,
         r.registration_code,
         p.name as program_name,
-        p.cost as program_cost
+        p.cost as program_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost
       FROM payments py
       LEFT JOIN registrations r ON py.registration_id = r.id
       LEFT JOIN programs p ON r.program_id = p.id
@@ -358,6 +362,8 @@ router.get("/:id", async (req, res) => {
         u.address,
         p.name as program_name,
         p.cost as program_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
         p.duration as program_duration,
         p.schedule as program_schedule,
         verifier.full_name as verified_by_name
@@ -420,6 +426,8 @@ router.get("/:id/receipt", async (req, res) => {
         u.address,
         p.name as program_name,
         p.cost as program_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
         p.duration as program_duration,
         verifier.full_name as verified_by_name
       FROM payments py

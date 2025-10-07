@@ -143,7 +143,7 @@ const Programs = () => {
                     <div className="card-header bg-transparent">
                       <div className="d-flex justify-content-between align-items-center">
                         <h5 className="card-title mb-1">{program.name}</h5>
-                        <span className="badge bg-success"> {program.category_name} </span>
+                        <span className="badge bg-primary"> {program.category_name} </span>
                       </div>
                     </div>
 
@@ -187,7 +187,7 @@ const Programs = () => {
                         <div className="mb-2">
                           <strong>Kuota Tersedia:</strong>
                           <p className="mb-1">
-                            <span className="badge bg-info">
+                            <span className="badge bg-primary">
                               {program.current_participants || 0} /{" "}
                               {program.capacity} peserta
                             </span>
@@ -218,7 +218,7 @@ const Programs = () => {
 
                         <div className="mb-2">
                           <strong>Dana Talang:</strong>
-                          <p className="mb-1 small text-success">
+                          <p className="mb-1 small text-primary">
                             {program.bridge_fund}
                           </p>
                         </div>

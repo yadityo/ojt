@@ -21,6 +21,9 @@ import userDashboardRoutes from "./routes/userDashboard.js";
 import selectionRoutes from "./routes/selection.js";
 import placementRoutes from "./routes/placement.js";
 import reportRoutes from "./routes/reports.js";
+// import provinceRoutes from "./routes/provinces.js";
+import wilayahRoutes from "./routes/wilayah.js";
+import documentRoutes from "./routes/documents.js";
 
 dotenv.config();
 
@@ -86,6 +89,9 @@ app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/selection", selectionRoutes);
 app.use("/api/placement", placementRoutes);
 app.use("/api/reports", reportRoutes);
+// app.use("/api/provinces", provinceRoutes);
+app.use("/api/wilayah", wilayahRoutes);
+app.use("/api/documents", documentRoutes);
 
 // Error handling middleware
 app.use((error, req, res, next) => {
