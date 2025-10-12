@@ -17,8 +17,14 @@ const Contact = () => {
     {
       icon: "bi-geo-alt",
       title: "Alamat Kantor",
-      content: "Jl. Ganesa No.15E, Lb. Siliwangi, Kecamatan Coblong, Kota Bandung, Jawa Barat 40132",
+      content:
+        "Jl. Ganesa No.15E, Lb. Siliwangi, Kecamatan Coblong, Kota Bandung, Jawa Barat 40132",
       link: "https://maps.app.goo.gl/HizqPRwZXnyn9S5p8",
+    },
+    {
+      icon: "bi-clock",
+      title: "Jam Operasional",
+      content: "Senin - Jumat: 08:00 - 17:00 WIB\nSabtu: 08:00 - 12:00 WIB",
     },
     {
       icon: "bi-telephone",
@@ -38,11 +44,7 @@ const Contact = () => {
       content: "info@fitalenta.com",
       link: "mailto:info@fitalenta.com",
     },
-    {
-      icon: "bi-clock",
-      title: "Jam Operasional",
-      content: "Senin - Jumat: 08:00 - 17:00 WIB\nSabtu: 08:00 - 12:00 WIB",
-    },
+    
   ];
 
   const socialMedia = [
@@ -91,11 +93,7 @@ const Contact = () => {
     setSubmitStatus(null);
 
     try {
-      // Simulate API call - replace with actual endpoint
       await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Here you would typically send the data to your backend
-      // await axios.post('/api/contact', formData);
 
       setSubmitStatus({
         type: "success",
@@ -157,23 +155,14 @@ const Contact = () => {
       {/* Contact Information & Form Section */}
       <section className="py-5">
         <div className="container">
-          <div className="row">
-            <div className="col-12 text-center mb-5">
-              <h2 className="display-5 fw-bold text-primary">Get In Touch</h2>
-              <p className="lead text-muted">
-                Kami siap membantu Anda dalam perjalanan karir ke Jepang
-              </p>
-            </div>
-          </div>
-
           <div className="row g-5">
             {/* Contact Information */}
-            <div className="col-lg-5">
-              <div className="mb-5">
-                <h3 className="h2 fw-bold text-primary mb-4">
+            <div className="col-lg-12">
+              <div className="mb-5 text-center">
+                <h2 className="display-5 fw-bold text-primary mb-4">
                   Informasi Kontak
-                </h3>
-                <p className="text-muted mb-4">
+                </h2>
+                <p className="lead text-muted mb-4">
                   Jangan ragu untuk menghubungi kami melalui berbagai channel
                   yang tersedia. Tim kami siap membantu menjawab pertanyaan
                   Anda.
@@ -181,9 +170,9 @@ const Contact = () => {
               </div>
 
               {/* Contact Info Cards */}
-              <div className="row g-4">
+              <div className="row g-4 justify-content-center">
                 {contactInfo.map((info, index) => (
-                  <div key={index} className="col-12">
+                  <div key={index} className="col-12 col-sm-6 col-md-4">
                     <div className="card border-0 shadow-sm h-100 hover-shadow">
                       <div className="card-body p-4">
                         <div className="d-flex align-items-start">
@@ -237,9 +226,9 @@ const Contact = () => {
               </div>
 
               {/* Social Media */}
-              <div className="mt-5">
+              <div className="mt-5 text-center">
                 <h4 className="h4 fw-bold text-primary mb-4">Follow Kami</h4>
-                <div className="d-flex gap-3 flex-wrap">
+                <div className="d-flex gap-3 flex-wrap justify-content-center">
                   {socialMedia.map((social, index) => (
                     <a
                       key={index}
@@ -253,165 +242,6 @@ const Contact = () => {
                       {social.name}
                     </a>
                   ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Contact Form */}
-            <div className="col-lg-7">
-              <div className="card border-0 shadow-custom">
-                <div className="card-header bg-gradient-primary text-white py-4">
-                  <h3 className="card-title mb-0 text-center">
-                    <i className="bi bi-send me-2"></i>
-                    Kirim Pesan
-                  </h3>
-                </div>
-                <div className="card-body p-4 p-md-5">
-                  {submitStatus && (
-                    <div
-                      className={`alert alert-${
-                        submitStatus.type === "success" ? "success" : "danger"
-                      } alert-dismissible fade show`}
-                      role="alert"
-                    >
-                      {submitStatus.message}
-                      <button
-                        type="button"
-                        className="btn-close"
-                        onClick={() => setSubmitStatus(null)}
-                      ></button>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSubmit}>
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <label
-                          htmlFor="name"
-                          className="form-label fw-semibold"
-                        >
-                          Nama Lengkap <span className="text-danger">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          id="name"
-                          name="name"
-                          value={formData.name}
-                          onChange={handleChange}
-                          required
-                          placeholder="Masukkan nama lengkap"
-                        />
-                      </div>
-                      <div className="col-md-6">
-                        <label
-                          htmlFor="email"
-                          className="form-label fw-semibold"
-                        >
-                          Email <span className="text-danger">*</span>
-                        </label>
-                        <input
-                          type="email"
-                          className="form-control"
-                          id="email"
-                          name="email"
-                          value={formData.email}
-                          onChange={handleChange}
-                          required
-                          placeholder="nama@email.com"
-                        />
-                      </div>
-                      <div className="col-md-6">
-                        <label
-                          htmlFor="phone"
-                          className="form-label fw-semibold"
-                        >
-                          Nomor Telepon
-                        </label>
-                        <input
-                          type="tel"
-                          className="form-control"
-                          id="phone"
-                          name="phone"
-                          value={formData.phone}
-                          onChange={handleChange}
-                          placeholder="+62 812 3456 7890"
-                        />
-                      </div>
-                      <div className="col-md-6">
-                        <label
-                          htmlFor="subject"
-                          className="form-label fw-semibold"
-                        >
-                          Subjek <span className="text-danger">*</span>
-                        </label>
-                        <select
-                          className="form-select"
-                          id="subject"
-                          name="subject"
-                          value={formData.subject}
-                          onChange={handleChange}
-                          required
-                        >
-                          <option value="">Pilih subjek...</option>
-                          <option value="informasi-program">
-                            Informasi Program
-                          </option>
-                          <option value="pendaftaran">Pendaftaran</option>
-                          <option value="konsultasi">Konsultasi</option>
-                          <option value="kerjasama">Kerjasama</option>
-                          <option value="lainnya">Lainnya</option>
-                        </select>
-                      </div>
-                      <div className="col-12">
-                        <label
-                          htmlFor="message"
-                          className="form-label fw-semibold"
-                        >
-                          Pesan <span className="text-danger">*</span>
-                        </label>
-                        <textarea
-                          className="form-control"
-                          id="message"
-                          name="message"
-                          rows="6"
-                          value={formData.message}
-                          onChange={handleChange}
-                          required
-                          placeholder="Tulis pesan Anda di sini..."
-                          style={{ resize: "none" }}
-                        ></textarea>
-                      </div>
-                      <div className="col-12">
-                        <button
-                          type="submit"
-                          className="btn btn-primary btn-lg w-100"
-                          disabled={loading}
-                        >
-                          {loading ? (
-                            <>
-                              <span
-                                className="spinner-border spinner-border-sm me-2"
-                                role="status"
-                              ></span>
-                              Mengirim...
-                            </>
-                          ) : (
-                            <>
-                              <i className="bi bi-send me-2"></i>
-                              Kirim Pesan
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <div className="col-12">
-                        <p className="text-muted small mb-0">
-                          <span className="text-danger">*</span> Menandakan
-                          field yang wajib diisi
-                        </p>
-                      </div>
-                    </div>
-                  </form>
                 </div>
               </div>
             </div>
@@ -456,7 +286,8 @@ const Contact = () => {
                           Kantor Pusat FITALENTA
                         </h5>
                         <p className="text-muted mb-0">
-                          Jl. Ganesa No.15E, Lb. Siliwangi, Kecamatan Coblong, Kota Bandung, Jawa Barat 40132
+                          Jl. Ganesa No.15E, Lb. Siliwangi, Kecamatan Coblong,
+                          Kota Bandung, Jawa Barat 40132
                         </p>
                       </div>
                       <div className="col-md-4 text-md-end">

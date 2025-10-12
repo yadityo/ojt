@@ -32,7 +32,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get program by ID with detailed information
 router.get("/:id", async (req, res) => {
   try {
     const programId = req.params.id;
@@ -57,19 +56,43 @@ router.get("/:id", async (req, res) => {
 
     const program = programs[0];
 
-    // Get program content
-    const [content] = await db.promise().query(
-      `SELECT section_name, content_type, content, file_path, display_order 
-       FROM program_content 
-       WHERE program_id = ? AND is_active = TRUE 
-       ORDER BY display_order`,
-      [programId]
-    );
+    try {
+      if (
+        program.curriculum_json &&
+        typeof program.curriculum_json === "string"
+      ) {
+        program.curriculum_json = JSON.parse(program.curriculum_json);
+      }
+      if (
+        program.facilities_json &&
+        typeof program.facilities_json === "string"
+      ) {
+        program.facilities_json = JSON.parse(program.facilities_json);
+      }
+      if (program.timeline_json && typeof program.timeline_json === "string") {
+        program.timeline_json = JSON.parse(program.timeline_json);
+      }
+      if (
+        program.fee_details_json &&
+        typeof program.fee_details_json === "string"
+      ) {
+        program.fee_details_json = JSON.parse(program.fee_details_json);
+      }
+      if (
+        program.requirements_list &&
+        typeof program.requirements_list === "string"
+      ) {
+        program.requirements_list = JSON.parse(program.requirements_list);
+      }
+    } catch (parseError) {
+      console.warn("⚠️ Error parsing JSON fields:", parseError);
+      // Tetap lanjutkan meski ada error parsing
+    }
 
     // Get related programs in the same category
     const [relatedPrograms] = await db.promise().query(
       `
-      SELECT id, name, description, cost, duration 
+      SELECT id, name, description, duration, training_cost, departure_cost, installment_plan
       FROM programs 
       WHERE category_id = ? AND id != ? AND status = 'active' 
       LIMIT 3
@@ -81,7 +104,6 @@ router.get("/:id", async (req, res) => {
       success: true,
       data: {
         ...program,
-        content,
         relatedPrograms,
       },
     });
@@ -94,17 +116,57 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Update program (admin only) - will be used later
+// Update program (admin only)
 router.put("/:id", async (req, res) => {
   try {
-    const { name, description, schedule, cost, contact_info, status } =
-      req.body;
+    const {
+      name,
+      description,
+      schedule,
+      duration,
+      capacity,
+      contact_info,
+      status,
+      training_cost,
+      departure_cost,
+      installment_plan,
+      location,
+      bridge_fund,
+      curriculum_json,
+      facilities_json,
+      timeline_json,
+      fee_details_json,
+      requirements_list,
+    } = req.body;
 
     await db.promise().query(
       `UPDATE programs 
-       SET name = ?, description = ?, schedule = ?, cost = ?, contact_info = ?, status = ?
+       SET name = ?, description = ?, schedule = ?, duration = ?, capacity = ?, 
+           contact_info = ?, status = ?, training_cost = ?, departure_cost = ?,
+           installment_plan = ?, location = ?, bridge_fund = ?, curriculum_json = ?, facilities_json = ?,
+           timeline_json = ?, fee_details_json = ?, requirements_list = ?,
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [name, description, schedule, cost, contact_info, status, req.params.id]
+      [
+        name,
+        description,
+        schedule,
+        duration,
+        capacity,
+        contact_info,
+        status,
+        training_cost,
+        departure_cost,
+        installment_plan,
+        location,
+        bridge_fund,
+        curriculum_json ? JSON.stringify(curriculum_json) : null,
+        facilities_json ? JSON.stringify(facilities_json) : null,
+        timeline_json ? JSON.stringify(timeline_json) : null,
+        fee_details_json ? JSON.stringify(fee_details_json) : null,
+        requirements_list ? JSON.stringify(requirements_list) : null,
+        req.params.id,
+      ]
     );
 
     res.json({
@@ -113,6 +175,109 @@ router.put("/:id", async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating program:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// POST /api/programs - Create new program
+router.post("/", async (req, res) => {
+  try {
+    const {
+      category_id,
+      name,
+      description,
+      requirements,
+      schedule,
+      duration,
+      capacity,
+      contact_info,
+      status,
+      location,
+      training_cost,
+      departure_cost,
+      installment_plan,
+      bridge_fund,
+      curriculum_json,
+      facilities_json,
+      timeline_json,
+      fee_details_json,
+      requirements_list,
+    } = req.body;
+
+    const [result] = await db.promise().query(
+      `INSERT INTO programs 
+       (category_id, name, description, requirements, schedule, duration, capacity, 
+        contact_info, status, location, training_cost, departure_cost, installment_plan, 
+        bridge_fund, curriculum_json, facilities_json, timeline_json, fee_details_json, requirements_list) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        category_id,
+        name,
+        description,
+        requirements,
+        schedule,
+        duration,
+        capacity,
+        contact_info,
+        status,
+        location,
+        training_cost,
+        departure_cost,
+        installment_plan,
+        bridge_fund,
+        curriculum_json,
+        facilities_json,
+        timeline_json,
+        fee_details_json,
+        requirements_list,
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Program created successfully",
+      data: {
+        id: result.insertId,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating program:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// DELETE /api/programs/:id - Delete program
+router.delete("/:id", async (req, res) => {
+  try {
+    const programId = req.params.id;
+
+    // Check if program exists
+    const [programs] = await db
+      .promise()
+      .query("SELECT id FROM programs WHERE id = ?", [programId]);
+
+    if (programs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Program not found",
+      });
+    }
+
+    // Delete program
+    await db.promise().query("DELETE FROM programs WHERE id = ?", [programId]);
+
+    res.json({
+      success: true,
+      message: "Program deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting program:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",

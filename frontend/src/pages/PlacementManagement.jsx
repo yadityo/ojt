@@ -180,7 +180,6 @@ const PlacementManagement = () => {
       proses: { class: "bg-warning", text: "Proses" },
       lolos: { class: "bg-success", text: "Lolos" },
       ditempatkan: { class: "bg-success", text: "Ditempatkan" },
-      gagal: { class: "bg-danger", text: "Gagal" },
     };
     const config = statusConfig[status] || {
       class: "bg-secondary",
@@ -247,10 +246,9 @@ const PlacementManagement = () => {
         </div>
       </div>
 
-      {/* Statistics Cards */}
       {stats && (
         <div className="row mb-4">
-          <div className="col-md-2">
+          <div className="col-md-3">
             <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.total_placements}</h4>
@@ -258,35 +256,27 @@ const PlacementManagement = () => {
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-warning text-white">
+          <div className="col-md-3">
+            <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.in_process}</h4>
                 <p className="mb-0">Proses</p>
               </div>
             </div>
           </div>
-          <div className="col-md-2">
-            <div className="card bg-success text-white">
+          <div className="col-md-3">
+            <div className="card bg-primary text-white">
+              <div className="card-body text-center">
+                <h4 className="mb-0">{stats.statistics.passed}</h4>
+                <p className="mb-0">Lolos</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.placed}</h4>
                 <p className="mb-0">Ditempatkan</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-2">
-            <div className="card bg-danger text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">{stats.statistics.failed}</h4>
-                <p className="mb-0">Gagal</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-2">
-            <div className="card bg-info text-white">
-              <div className="card-body text-center">
-                <h4 className="mb-0">{stats.statistics.total_companies}</h4>
-                <p className="mb-0">Perusahaan</p>
               </div>
             </div>
           </div>
@@ -333,7 +323,7 @@ const PlacementManagement = () => {
                 value={filters.program}
                 onChange={(e) => handleFilterChange("program", e.target.value)}
               >
-                <option value="all">All Programs</option>
+                <option value="all">Semua Program</option>
                 {programs.map((program) => (
                   <option key={program.id} value={program.id}>
                     {program.name}
@@ -348,11 +338,10 @@ const PlacementManagement = () => {
                 value={filters.status}
                 onChange={(e) => handleFilterChange("status", e.target.value)}
               >
-                <option value="all">All Status</option>
+                <option value="all">Semua Status</option>
                 <option value="proses">Proses</option>
                 <option value="lolos">Lolos</option>
                 <option value="ditempatkan">Ditempatkan</option>
-                <option value="gagal">Gagal</option>
               </select>
             </div>
             <div className="col-md-4">
@@ -551,7 +540,6 @@ const PlacementManagement = () => {
                           <option value="proses">Proses</option>
                           <option value="lolos">Lolos</option>
                           <option value="ditempatkan">Ditempatkan</option>
-                          <option value="gagal">Gagal</option>
                         </select>
                       </div>
                     </div>
@@ -737,7 +725,6 @@ const PlacementManagement = () => {
                     >
                       <option value="ditempatkan">Ditempatkan</option>
                       <option value="lolos">Lolos</option>
-                      <option value="gagal">Gagal</option>
                     </select>
                   </div>
                   <div className="mb-3">

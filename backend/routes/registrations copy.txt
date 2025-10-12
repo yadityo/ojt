@@ -7,8 +7,7 @@ import {
 
 const router = express.Router();
 
-// Get all registrations with filtering and search - PERBAIKAN: tambah company_name dan placement_date
-// Get all registrations with filtering and search - PERBAIKAN QUERY
+// Get all registrations with filtering and search
 router.get("/", async (req, res) => {
   try {
     const {
@@ -21,27 +20,7 @@ router.get("/", async (req, res) => {
 
     let query = `
       SELECT 
-        r.id,
-        r.user_id,
-        r.program_id,
-        r.registration_code,
-        r.registration_date,
-        r.nik,
-        r.gender,
-        r.birth_place,
-        r.birth_date,
-        r.last_education,
-        r.major,
-        r.education_institution,
-        r.current_activity,
-        r.marital_status,
-        r.parent_phone,
-        r.parent_relationship,
-        r.ktp_address,
-        r.domicile_address,
-        r.photo_path,
-        r.n4_certificate_path,
-        r.ssw_certificate_path,
+        r.*,
         u.full_name,
         u.email,
         u.phone,
@@ -53,11 +32,8 @@ router.get("/", async (req, res) => {
         p.installment_plan as program_installment_plan,
         ss.status as selection_status,
         ss.notes as selection_notes,
-        ss.evaluated_at as selection_evaluated_at,
         ps.status as placement_status,
         ps.notes as placement_notes,
-        ps.company_name,
-        ps.placement_date,
         py.status as payment_status,
         py.amount,
         py.amount_paid,
@@ -83,32 +59,20 @@ router.get("/", async (req, res) => {
 
     // Filter by payment status
     if (payment_status && payment_status !== "all") {
-      if (payment_status === "no_payment") {
-        query += " AND py.id IS NULL";
-      } else {
-        query += " AND py.status = ?";
-        params.push(payment_status);
-      }
+      query += " AND py.status = ?";
+      params.push(payment_status);
     }
 
     // Filter by selection status
     if (selection_status && selection_status !== "all") {
-      if (selection_status === "no_selection") {
-        query += " AND ss.id IS NULL";
-      } else {
-        query += " AND ss.status = ?";
-        params.push(selection_status);
-      }
+      query += " AND ss.status = ?";
+      params.push(selection_status);
     }
 
     // Filter by placement status
     if (placement_status && placement_status !== "all") {
-      if (placement_status === "no_placement") {
-        query += " AND ps.id IS NULL";
-      } else {
-        query += " AND ps.status = ?";
-        params.push(placement_status);
-      }
+      query += " AND ps.status = ?";
+      params.push(placement_status);
     }
 
     // Search by name, email, or registration code
@@ -119,24 +83,13 @@ router.get("/", async (req, res) => {
       params.push(searchTerm, searchTerm, searchTerm);
     }
 
-    // HAPUS GROUP BY dan gunakan DISTINCT jika perlu
     query += " ORDER BY r.registration_date DESC";
 
     const [registrations] = await db.promise().query(query, params);
 
-    // Handle potential duplicates in application code
-    const uniqueRegistrations = registrations.reduce((acc, current) => {
-      const x = acc.find((item) => item.id === current.id);
-      if (!x) {
-        return acc.concat([current]);
-      } else {
-        return acc;
-      }
-    }, []);
-
     res.json({
       success: true,
-      data: uniqueRegistrations,
+      data: registrations,
     });
   } catch (error) {
     console.error("Error fetching registrations:", error);
@@ -147,38 +100,17 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Update selection status - PERBAIKAN: tambah error handling untuk record tidak ditemukan
+// Update selection status
 router.put("/:id/selection", async (req, res) => {
   try {
-    const { status, notes, evaluated_by } = req.body;
+    const { status, notes } = req.body;
 
-    // Check if selection status exists
-    const [existing] = await db
-      .promise()
-      .query("SELECT * FROM selection_status WHERE registration_id = ?", [
-        req.params.id,
-      ]);
-
-    if (existing.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Selection status record not found",
-      });
-    }
-
-    const [result] = await db.promise().query(
+    await db.promise().query(
       `UPDATE selection_status 
-       SET status = ?, notes = ?, evaluated_at = NOW(), evaluated_by = ?
+       SET status = ?, notes = ?, evaluated_at = NOW() 
        WHERE registration_id = ?`,
-      [status, notes, evaluated_by, req.params.id]
+      [status, notes, req.params.id]
     );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Selection status record not found",
-      });
-    }
 
     res.json({
       success: true,
@@ -193,38 +125,17 @@ router.put("/:id/selection", async (req, res) => {
   }
 });
 
-// Update placement status - PERBAIKAN: tambah error handling
+// Update placement status
 router.put("/:id/placement", async (req, res) => {
   try {
-    const { status, company_name, placement_date, notes } = req.body;
+    const { status, placement_date, notes } = req.body;
 
-    // Check if placement status exists
-    const [existing] = await db
-      .promise()
-      .query("SELECT * FROM placement_status WHERE registration_id = ?", [
-        req.params.id,
-      ]);
-
-    if (existing.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Placement status record not found",
-      });
-    }
-
-    const [result] = await db.promise().query(
+    await db.promise().query(
       `UPDATE placement_status 
-       SET status = ?, company_name = ?, placement_date = ?, notes = ?, updated_at = NOW()
+       SET status = ?, placement_date = ?, notes = ? 
        WHERE registration_id = ?`,
-      [status, company_name, placement_date, notes, req.params.id]
+      [status, placement_date, notes, req.params.id]
     );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Placement status record not found",
-      });
-    }
 
     res.json({
       success: true,
@@ -239,39 +150,18 @@ router.put("/:id/placement", async (req, res) => {
   }
 });
 
-// Update payment status - PERBAIKAN: tambah error handling
+// Update payment status
 router.put("/:id/payment", async (req, res) => {
   try {
     const { status, amount_paid, payment_date, receipt_number, notes } =
       req.body;
 
-    // Check if payment exists
-    const [existing] = await db
-      .promise()
-      .query("SELECT * FROM payments WHERE registration_id = ?", [
-        req.params.id,
-      ]);
-
-    if (existing.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment record not found",
-      });
-    }
-
-    const [result] = await db.promise().query(
+    await db.promise().query(
       `UPDATE payments 
-       SET status = ?, amount_paid = ?, payment_date = ?, receipt_number = ?, notes = ?, updated_at = NOW()
+       SET status = ?, amount_paid = ?, payment_date = ?, receipt_number = ?, notes = ? 
        WHERE registration_id = ?`,
       [status, amount_paid, payment_date, receipt_number, notes, req.params.id]
     );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment record not found",
-      });
-    }
 
     res.json({
       success: true,
@@ -286,18 +176,15 @@ router.put("/:id/payment", async (req, res) => {
   }
 });
 
-// Get registration statistics for admin dashboard - PERBAIKAN: query lebih akurat
+// Get registration statistics for admin dashboard
 router.get("/statistics/summary", async (req, res) => {
   try {
     const [stats] = await db.promise().query(`
       SELECT 
-        COUNT(DISTINCT r.id) as total_registrations,
-        COUNT(DISTINCT CASE WHEN py.status = 'pending' THEN r.id END) as pending_payments,
-        COUNT(DISTINCT CASE WHEN ss.status = 'menunggu' THEN r.id END) as pending_selections,
-        COUNT(DISTINCT CASE WHEN ps.status = 'proses' THEN r.id END) as pending_placements,
-        COUNT(DISTINCT CASE WHEN py.status = 'paid' THEN r.id END) as completed_payments,
-        COUNT(DISTINCT CASE WHEN ss.status = 'lolos' THEN r.id END) as passed_selections,
-        COUNT(DISTINCT CASE WHEN ps.status = 'ditempatkan' THEN r.id END) as placed
+        COUNT(*) as total_registrations,
+        SUM(CASE WHEN py.status = 'pending' THEN 1 ELSE 0 END) as pending_payments,
+        SUM(CASE WHEN ss.status = 'menunggu' THEN 1 ELSE 0 END) as pending_selections,
+        SUM(CASE WHEN ps.status = 'proses' THEN 1 ELSE 0 END) as pending_placements
       FROM registrations r
       LEFT JOIN selection_status ss ON r.id = ss.registration_id
       LEFT JOIN placement_status ps ON r.id = ps.registration_id
@@ -310,14 +197,10 @@ router.get("/statistics/summary", async (req, res) => {
         r.*,
         u.full_name,
         u.email,
-        p.name as program_name,
-        ss.status as selection_status,
-        ps.status as placement_status
+        p.name as program_name
       FROM registrations r
       LEFT JOIN users u ON r.user_id = u.id
       LEFT JOIN programs p ON r.program_id = p.id
-      LEFT JOIN selection_status ss ON r.id = ss.registration_id
-      LEFT JOIN placement_status ps ON r.id = ps.registration_id
       ORDER BY r.registration_date DESC
       LIMIT 5
     `);
@@ -338,69 +221,6 @@ router.get("/statistics/summary", async (req, res) => {
   }
 });
 
-// PERBAIKAN: Tambah endpoint untuk get single registration
-router.get("/:id", async (req, res) => {
-  try {
-    const [registrations] = await db.promise().query(
-      `
-      SELECT 
-        r.*,
-        u.full_name,
-        u.email,
-        u.phone,
-        u.address,
-        p.name as program_name,
-        p.training_cost as program_training_cost,
-        p.departure_cost as program_departure_cost,
-        p.duration as program_duration,
-        p.installment_plan as program_installment_plan,
-        ss.status as selection_status,
-        ss.notes as selection_notes,
-        ss.evaluated_at as selection_evaluated_at,
-        ps.status as placement_status,
-        ps.notes as placement_notes,
-        ps.company_name,
-        ps.placement_date,
-        py.status as payment_status,
-        py.amount,
-        py.amount_paid,
-        py.invoice_number,
-        py.receipt_number,
-        py.due_date,
-        py.payment_date
-      FROM registrations r
-      LEFT JOIN users u ON r.user_id = u.id
-      LEFT JOIN programs p ON r.program_id = p.id
-      LEFT JOIN selection_status ss ON r.id = ss.registration_id
-      LEFT JOIN placement_status ps ON r.id = ps.registration_id
-      LEFT JOIN payments py ON r.id = py.registration_id
-      WHERE r.id = ?
-      GROUP BY r.id
-    `,
-      [req.params.id]
-    );
-
-    if (registrations.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Registration not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: registrations[0],
-    });
-  } catch (error) {
-    console.error("Error fetching registration:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
-
-// POST registration - SUDAH BAGUS, tidak perlu banyak perubahan
 router.post("/", async (req, res) => {
   try {
     const {
@@ -474,7 +294,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Check if program exists
+    // Check if program exists - TAMBAHKAN installment_plan
     const [programs] = await db
       .promise()
       .query(
@@ -521,7 +341,7 @@ router.post("/", async (req, res) => {
 
     console.log("Generated registration code:", registrationCode);
 
-    // Insert registration
+    // Insert registration tanpa field status
     const [result] = await db.promise().query(
       `INSERT INTO registrations 
        (user_id, program_id, registration_code,

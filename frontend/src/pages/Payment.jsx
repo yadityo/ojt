@@ -13,6 +13,78 @@ const Payment = () => {
   const [file, setFile] = useState(null);
   const [message, setMessage] = useState({ type: "", text: "" });
 
+  // Helper functions
+  const formatCurrency = (value) => {
+    if (!value && value !== 0) return "Rp 0";
+    const numValue = parseFloat(value);
+    return isNaN(numValue) ? "Rp 0" : `Rp ${numValue.toLocaleString("id-ID")}`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "-";
+    try {
+      return new Date(dateString).toLocaleDateString("id-ID", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch (error) {
+      return "-";
+    }
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "-";
+    try {
+      return new Date(dateString).toLocaleString("id-ID", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      return "-";
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      pending: { class: "bg-warning", text: "Menunggu" },
+      installment_1: { class: "bg-info", text: "Cicilan 1" },
+      installment_2: { class: "bg-info", text: "Cicilan 2" },
+      installment_3: { class: "bg-info", text: "Cicilan 3" },
+      installment_4: { class: "bg-info", text: "Cicilan 4" },
+      installment_5: { class: "bg-info", text: "Cicilan 5" },
+      installment_6: { class: "bg-info", text: "Cicilan 6" },
+      paid: { class: "bg-success", text: "Lunas" },
+      overdue: { class: "bg-danger", text: "Jatuh Tempo" },
+      cancelled: { class: "bg-secondary", text: "Dibatalkan" },
+    };
+
+    const config = statusConfig[status] || {
+      class: "bg-secondary",
+      text: status,
+    };
+    return <span className={`badge ${config.class}`}>{config.text}</span>;
+  };
+
+  const getStatusText = (status) => {
+    const statusTexts = {
+      pending: "Menunggu",
+      installment_1: "Cicilan 1",
+      installment_2: "Cicilan 2",
+      installment_3: "Cicilan 3",
+      installment_4: "Cicilan 4",
+      installment_5: "Cicilan 5",
+      installment_6: "Cicilan 6",
+      paid: "Lunas",
+      overdue: "Terlambat",
+      cancelled: "Dibatalkan",
+    };
+    return statusTexts[status] || status;
+  };
+
   useEffect(() => {
     if (user) {
       fetchPayments();
@@ -21,9 +93,15 @@ const Payment = () => {
 
   const fetchPayments = async () => {
     try {
+      setLoading(true);
       const response = await axios.get(`/api/payments/user/${user.id}`);
       if (response.data.success) {
         setPayments(response.data.data);
+      } else {
+        setMessage({
+          type: "error",
+          text: response.data.message || "Gagal memuat data pembayaran",
+        });
       }
     } catch (error) {
       console.error("Error fetching payments:", error);
@@ -42,8 +120,9 @@ const Payment = () => {
       if (!selectedFile.type.startsWith("image/")) {
         setMessage({
           type: "error",
-          text: "Hanya file gambar yang diizinkan",
+          text: "Hanya file gambar (JPG, PNG) yang diizinkan",
         });
+        e.target.value = ""; // Reset input
         return;
       }
       if (selectedFile.size > 5 * 1024 * 1024) {
@@ -51,9 +130,11 @@ const Payment = () => {
           type: "error",
           text: "Ukuran file maksimal 5MB",
         });
+        e.target.value = ""; // Reset input
         return;
       }
       setFile(selectedFile);
+      setMessage({ type: "", text: "" }); // Clear previous messages
     }
   };
 
@@ -84,12 +165,12 @@ const Payment = () => {
       if (response.data.success) {
         setMessage({
           type: "success",
-          text: "Bukti pembayaran berhasil diupload",
+          text: "Bukti pembayaran berhasil diupload dan menunggu verifikasi admin",
         });
         setShowUploadModal(false);
         setFile(null);
         setSelectedPayment(null);
-        fetchPayments();
+        fetchPayments(); // Refresh data
       }
     } catch (error) {
       console.error("Error uploading proof:", error);
@@ -102,12 +183,26 @@ const Payment = () => {
     }
   };
 
-  // 📥 FUNGSI DOWNLOAD KWITANSI YANG BENAR
+  // Safe calculation for progress and amounts
+  const safeCalculateProgress = (payment) => {
+    const amount = parseFloat(payment?.amount) || 0;
+    const amountPaid = parseFloat(payment?.amount_paid) || 0;
+
+    if (amount <= 0) return 0;
+    return Math.min(100, (amountPaid / amount) * 100);
+  };
+
+  const safeCalculateRemaining = (payment) => {
+    const amount = parseFloat(payment?.amount) || 0;
+    const amountPaid = parseFloat(payment?.amount_paid) || 0;
+    return Math.max(0, amount - amountPaid);
+  };
+
   const downloadReceipt = async (payment) => {
     try {
       console.log("Downloading receipt for payment:", payment.id);
 
-      // Method 1: Coba download PDF dari backend
+      // Try PDF first
       try {
         const response = await axios.get(
           `/api/payments/${payment.id}/receipt`,
@@ -116,7 +211,6 @@ const Payment = () => {
           }
         );
 
-        // Create blob link to download
         const url = window.URL.createObjectURL(new Blob([response.data]));
         const link = document.createElement("a");
         link.href = url;
@@ -131,18 +225,22 @@ const Payment = () => {
 
         setMessage({
           type: "success",
-          text: "Kwitansi berhasil diunduh",
+          text: "Kwitansi PDF berhasil diunduh",
         });
         return;
       } catch (pdfError) {
         console.log("PDF receipt not available, generating HTML receipt...");
       }
 
-      // Method 2: Fallback - Generate HTML Receipt
+      // Fallback to HTML receipt
       const receiptWindow = window.open("", "_blank");
       const receiptDate = payment.payment_date
         ? new Date(payment.payment_date).toLocaleDateString("id-ID")
         : new Date().toLocaleDateString("id-ID");
+
+      const amount = parseFloat(payment.amount) || 0;
+      const amountPaid = parseFloat(payment.amount_paid) || 0;
+      const remaining = Math.max(0, amount - amountPaid);
 
       receiptWindow.document.write(`
         <!DOCTYPE html>
@@ -271,11 +369,11 @@ const Payment = () => {
             <table>
               <tr>
                 <td width="30%"><strong>Program Magang</strong></td>
-                <td>: ${payment.program_name}</td>
+                <td>: ${payment.program_name || "N/A"}</td>
               </tr>
               <tr>
                 <td><strong>Biaya Program</strong></td>
-                <td>: Rp ${payment.amount?.toLocaleString("id-ID") || "0"}</td>
+                <td>: ${formatCurrency(amount)}</td>
               </tr>
             </table>
           </div>
@@ -288,31 +386,29 @@ const Payment = () => {
                 <td class="text-right"><strong>Jumlah</strong></td>
               </tr>
               <tr>
-                <td>Biaya Program ${payment.program_name}</td>
-                <td class="text-right">Rp ${
-                  payment.amount?.toLocaleString("id-ID") || "0"
-                }</td>
+                <td>Biaya Program ${payment.program_name || ""}</td>
+                <td class="text-right">${formatCurrency(amount)}</td>
               </tr>
               <tr class="border-top">
                 <td><strong>TOTAL TAGIHAN</strong></td>
-                <td class="text-right"><strong>Rp ${
-                  payment.amount?.toLocaleString("id-ID") || "0"
-                }</strong></td>
+                <td class="text-right"><strong>${formatCurrency(
+                  amount
+                )}</strong></td>
               </tr>
               <tr>
                 <td><strong>SUDAH DIBAYAR</strong></td>
-                <td class="text-right"><strong>Rp ${
-                  payment.amount_paid?.toLocaleString("id-ID") || "0"
-                }</strong></td>
+                <td class="text-right"><strong>${formatCurrency(
+                  amountPaid
+                )}</strong></td>
               </tr>
               ${
-                payment.amount_paid < payment.amount
+                remaining > 0
                   ? `
               <tr>
                 <td><strong>SISA TAGIHAN</strong></td>
-                <td class="text-right"><strong>Rp ${(
-                  payment.amount - payment.amount_paid
-                ).toLocaleString("id-ID")}</strong></td>
+                <td class="text-right"><strong>${formatCurrency(
+                  remaining
+                )}</strong></td>
               </tr>
               `
                   : ""
@@ -321,9 +417,7 @@ const Payment = () => {
           </div>
 
           <div class="total">
-            TOTAL YANG SUDAH DIBAYAR: Rp ${
-              payment.amount_paid?.toLocaleString("id-ID") || "0"
-            }
+            TOTAL YANG SUDAH DIBAYAR: ${formatCurrency(amountPaid)}
           </div>
 
           ${
@@ -376,7 +470,6 @@ const Payment = () => {
       `);
       receiptWindow.document.close();
 
-      // Auto print
       setTimeout(() => {
         receiptWindow.print();
       }, 500);
@@ -389,7 +482,6 @@ const Payment = () => {
     }
   };
 
-  // 👁️ FUNGSI UNTUK MENAMPILKAN DETAIL PEMBAYARAN
   const handleShowDetail = (payment) => {
     setSelectedPayment(payment);
     setShowDetailModal(true);
@@ -400,22 +492,23 @@ const Payment = () => {
     setSelectedPayment(null);
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount);
+  const handleCloseUploadModal = () => {
+    setShowUploadModal(false);
+    setSelectedPayment(null);
+    setFile(null);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("id-ID");
+  // Check if payment can be uploaded (pending or installment status)
+  const canUploadProof = (payment) => {
+    return (
+      payment.status === "pending" || payment.status.startsWith("installment_")
+    );
   };
 
-  const formatDateTime = (dateString) => {
-    if (!dateString) return "-";
-    return new Date(dateString).toLocaleString("id-ID");
+  // Check if payment is overdue
+  const isOverdue = (payment) => {
+    if (!payment.due_date || payment.status === "paid") return false;
+    return new Date(payment.due_date) < new Date();
   };
 
   if (loading) {
@@ -446,14 +539,20 @@ const Payment = () => {
       {message.text && (
         <div
           className={`alert alert-${
-            message.type === "error" ? "danger" : "success"
+            message.type === "error"
+              ? "danger"
+              : message.type === "success"
+              ? "success"
+              : "info"
           } alert-dismissible fade show`}
+          role="alert"
         >
           {message.text}
           <button
             type="button"
             className="btn-close"
             onClick={() => setMessage({ type: "", text: "" })}
+            aria-label="Close"
           ></button>
         </div>
       )}
@@ -462,8 +561,16 @@ const Payment = () => {
       <div className="row">
         <div className="col-12">
           <div className="card">
-            <div className="card-header">
+            <div className="card-header d-flex justify-content-between align-items-center">
               <h5 className="mb-0">Daftar Pembayaran</h5>
+              <button
+                className="btn btn-sm btn-outline-primary"
+                onClick={fetchPayments}
+                disabled={loading}
+              >
+                <i className="bi bi-arrow-clockwise me-1"></i>
+                Refresh
+              </button>
             </div>
             <div className="card-body">
               {payments.length === 0 ? (
@@ -479,11 +586,11 @@ const Payment = () => {
                 </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-striped table-hover align-middle">
-                    <thead className="table-light">
+                  <table className="table table-striped table-hover">
+                    <thead className="table-light align-middle">
                       <tr>
                         <th>#</th>
-                        <th>Invoice</th>
+                        <th>Nomor Invoice</th>
                         <th>Program</th>
                         <th>Jumlah Tagihan</th>
                         <th>Dibayar</th>
@@ -493,144 +600,118 @@ const Payment = () => {
                         <th>Aksi</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {payments.map((payment, index) => (
-                        <tr key={payment.id}>
-                          <td>{index + 1}</td>
-                          <td>
-                            <small className="text-muted">
-                              {payment.invoice_number}
-                            </small>
-                            {payment.receipt_number && (
-                              <div>
+                    <tbody className="align-middle">
+                      {payments.map((payment, index) => {
+                        const progress = safeCalculateProgress(payment);
+                        const isPaymentOverdue = isOverdue(payment);
+
+                        return (
+                          <tr key={payment.id}>
+                            <td>{index + 1}</td>
+                            <td>
+                              <small className="text-muted d-block">
+                                {payment.invoice_number}
+                              </small>
+                              {payment.receipt_number && (
                                 <small className="text-success">
                                   Receipt: {payment.receipt_number}
                                 </small>
-                              </div>
-                            )}
-                          </td>
-                          <td>{payment.program_name}</td>
-                          <td>{formatCurrency(payment.amount)}</td>
-                          <td>
-                            {formatCurrency(payment.amount_paid)}
-                            {payment.amount_paid > 0 && (
-                              <div>
-                                <small
+                              )}
+                            </td>
+                            <td>{payment.program_name || "N/A"}</td>
+                            <td>{formatCurrency(payment.amount)}</td>
+                            <td>
+                              {formatCurrency(payment.amount_paid)}
+                              {payment.amount_paid > 0 && (
+                                <div>
+                                  <small
+                                    className={
+                                      payment.amount_paid >= payment.amount
+                                        ? "text-success"
+                                        : "text-warning"
+                                    }
+                                  >
+                                    {progress.toFixed(0)}%
+                                  </small>
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              {getStatusBadge(payment.status)}
+                              {isPaymentOverdue && (
+                                <div>
+                                  <small className="text-danger">
+                                    <i className="bi bi-exclamation-triangle me-1"></i>
+                                    Terlambat
+                                  </small>
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              {payment.due_date ? (
+                                <span
                                   className={
-                                    payment.amount_paid >= payment.amount
-                                      ? "text-success"
-                                      : "text-warning"
+                                    isPaymentOverdue
+                                      ? "text-danger fw-bold"
+                                      : ""
                                   }
                                 >
-                                  {(
-                                    (payment.amount_paid / payment.amount) *
-                                    100
-                                  ).toFixed(0)}
-                                  %
-                                </small>
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                payment.status === "paid"
-                                  ? "bg-success"
-                                  : payment.status === "pending"
-                                  ? "bg-warning"
-                                  : payment.status === "down_payment"
-                                  ? "bg-info"
-                                  : payment.status === "overdue"
-                                  ? "bg-danger"
-                                  : "bg-secondary"
-                              }`}
-                            >
-                              {payment.status === "paid"
-                                ? "Lunas"
-                                : payment.status === "pending"
-                                ? "Menunggu"
-                                : payment.status === "down_payment"
-                                ? "DP"
-                                : payment.status === "overdue"
-                                ? "Terlambat"
-                                : payment.status}
-                            </span>
-                          </td>
-                          <td>
-                            {payment.due_date ? (
-                              <span
-                                className={
-                                  payment.status === "overdue" ||
-                                  (new Date(payment.due_date) < new Date() &&
-                                    payment.status !== "paid")
-                                    ? "text-danger fw-bold"
-                                    : ""
-                                }
-                              >
-                                {formatDate(payment.due_date)}
-                                {new Date(payment.due_date) < new Date() &&
-                                  payment.status !== "paid" && (
-                                    <div>
-                                      <small className="text-danger">
-                                        ⚠️ Terlambat
-                                      </small>
-                                    </div>
-                                  )}
-                              </span>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                          <td>
-                            {payment.receipt_number ? (
-                              <span className="badge bg-success">
-                                {payment.receipt_number}
-                              </span>
-                            ) : (
-                              <span className="badge bg-secondary">-</span>
-                            )}
-                          </td>
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {/* Upload Proof Button */}
-                              {(payment.status === "pending" ||
-                                payment.status === "down_payment") && (
-                                <button
-                                  className="btn btn-outline-primary"
-                                  onClick={() => {
-                                    setSelectedPayment(payment);
-                                    setShowUploadModal(true);
-                                  }}
-                                  title="Upload Bukti Bayar"
-                                >
-                                  <i className="bi bi-upload"></i>
-                                </button>
+                                  {formatDate(payment.due_date)}
+                                </span>
+                              ) : (
+                                "-"
                               )}
-
-                              {/* Download Receipt Button */}
-                              {payment.status === "paid" &&
-                                payment.receipt_number && (
+                            </td>
+                            <td>
+                              {payment.receipt_number ? (
+                                <span className="badge bg-success">
+                                  {payment.receipt_number}
+                                </span>
+                              ) : (
+                                <span className="badge bg-secondary">-</span>
+                              )}
+                            </td>
+                            <td>
+                              <div className="btn-group btn-group-sm">
+                                {/* Upload Proof Button */}
+                                {canUploadProof(payment) && (
                                   <button
-                                    className="btn btn-outline-success"
-                                    onClick={() => downloadReceipt(payment)}
-                                    title="Download Kwitansi"
+                                    className="btn btn-outline-primary"
+                                    onClick={() => {
+                                      setSelectedPayment(payment);
+                                      setShowUploadModal(true);
+                                    }}
+                                    title="Upload Bukti Bayar"
                                   >
-                                    <i className="bi bi-download"></i>
+                                    <i className="bi bi-upload"></i>
                                   </button>
                                 )}
 
-                              {/* View Details Button */}
-                              <button
-                                className="btn btn-outline-primary"
-                                onClick={() => handleShowDetail(payment)}
-                                title="Lihat Detail Pembayaran"
-                              >
-                                <i className="bi bi-eye"></i> Detail
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                {/* Download Receipt Button */}
+                                {payment.status === "paid" &&
+                                  payment.receipt_number && (
+                                    <button
+                                      className="btn btn-outline-primary"
+                                      onClick={() => downloadReceipt(payment)}
+                                      title="Download Kwitansi"
+                                    >
+                                      <i className="bi bi-download"></i>
+                                    </button>
+                                  )}
+
+                                {/* View Details Button */}
+                                <button
+                                  className="btn btn-outline-primary"
+                                  onClick={() => handleShowDetail(payment)}
+                                  title="Lihat Detail Pembayaran"
+                                >
+                                  <i className="bi bi-eye"></i>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -665,7 +746,7 @@ const Payment = () => {
                   </ul>
                 </li>
                 <li>Upload bukti transfer dengan mengklik tombol upload</li>
-                <li>Tunggu konfirmasi dari admin</li>
+                <li>Tunggu konfirmasi dari admin (1-2 hari kerja)</li>
                 <li>Download kwitansi setelah pembayaran lunas</li>
               </ol>
             </div>
@@ -682,7 +763,7 @@ const Payment = () => {
                   Pastikan status pembayaran <strong>"Lunas"</strong>
                 </li>
                 <li>
-                  Klik tombol <strong>Download</strong> (ikon 📥)
+                  Klik tombol <strong>Download</strong> (ikon unduh)
                 </li>
                 <li>Kwitansi akan terbuka di jendela baru</li>
                 <li>
@@ -707,6 +788,8 @@ const Payment = () => {
         <div
           className="modal fade show"
           style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+          tabIndex="-1"
+          role="dialog"
         >
           <div className="modal-dialog">
             <div className="modal-content">
@@ -715,11 +798,8 @@ const Payment = () => {
                 <button
                   type="button"
                   className="btn-close"
-                  onClick={() => {
-                    setShowUploadModal(false);
-                    setSelectedPayment(null);
-                    setFile(null);
-                  }}
+                  onClick={handleCloseUploadModal}
+                  disabled={uploading}
                 ></button>
               </div>
               <div className="modal-body">
@@ -730,7 +810,8 @@ const Payment = () => {
                 </div>
                 <div className="mb-3">
                   <label className="form-label">
-                    <strong>Program:</strong> {selectedPayment.program_name}
+                    <strong>Program:</strong>{" "}
+                    {selectedPayment.program_name || "N/A"}
                   </label>
                 </div>
                 <div className="mb-3">
@@ -742,7 +823,7 @@ const Payment = () => {
 
                 <div className="mb-3">
                   <label htmlFor="proofFile" className="form-label">
-                    Pilih File Bukti Pembayaran
+                    Pilih File Bukti Pembayaran *
                   </label>
                   <input
                     type="file"
@@ -750,9 +831,10 @@ const Payment = () => {
                     id="proofFile"
                     accept="image/*"
                     onChange={handleFileSelect}
+                    disabled={uploading}
                   />
                   <div className="form-text">
-                    Format: JPG, PNG (Maksimal 5MB)
+                    Format: JPG, PNG, GIF (Maksimal 5MB)
                   </div>
                 </div>
 
@@ -763,6 +845,16 @@ const Payment = () => {
                     <small>
                       Size: {(file.size / 1024 / 1024).toFixed(2)} MB
                     </small>
+                    <br />
+                    <small>Type: {file.type}</small>
+                  </div>
+                )}
+
+                {isOverdue(selectedPayment) && (
+                  <div className="alert alert-warning">
+                    <i className="bi bi-exclamation-triangle me-2"></i>
+                    Pembayaran ini sudah melewati batas waktu. Segera lakukan
+                    pembayaran.
                   </div>
                 )}
               </div>
@@ -770,11 +862,7 @@ const Payment = () => {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => {
-                    setShowUploadModal(false);
-                    setSelectedPayment(null);
-                    setFile(null);
-                  }}
+                  onClick={handleCloseUploadModal}
                   disabled={uploading}
                 >
                   Batal
@@ -791,7 +879,10 @@ const Payment = () => {
                       Uploading...
                     </>
                   ) : (
-                    "Upload Bukti"
+                    <>
+                      <i className="bi bi-upload me-2"></i>
+                      Upload Bukti
+                    </>
                   )}
                 </button>
               </div>
@@ -805,6 +896,8 @@ const Payment = () => {
         <div
           className="modal fade show"
           style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+          tabIndex="-1"
+          role="dialog"
         >
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
@@ -831,13 +924,13 @@ const Payment = () => {
                           <tbody>
                             <tr>
                               <td>
-                                <strong>Invoice Number:</strong>
+                                <strong>Nomor Invoice:</strong>
                               </td>
                               <td>{selectedPayment.invoice_number}</td>
                             </tr>
                             <tr>
                               <td>
-                                <strong>Receipt Number:</strong>
+                                <strong>Nomor Kwitansi:</strong>
                               </td>
                               <td>
                                 {selectedPayment.receipt_number ? (
@@ -853,7 +946,7 @@ const Payment = () => {
                               <td>
                                 <strong>Program:</strong>
                               </td>
-                              <td>{selectedPayment.program_name}</td>
+                              <td>{selectedPayment.program_name || "N/A"}</td>
                             </tr>
                             <tr>
                               <td>
@@ -879,24 +972,7 @@ const Payment = () => {
                               <td>
                                 <strong>Status:</strong>
                               </td>
-                              <td>
-                                <span
-                                  className={`badge ${
-                                    selectedPayment.status === "paid"
-                                      ? "bg-success"
-                                      : selectedPayment.status === "pending"
-                                      ? "bg-warning"
-                                      : selectedPayment.status ===
-                                        "down_payment"
-                                      ? "bg-info"
-                                      : selectedPayment.status === "overdue"
-                                      ? "bg-danger"
-                                      : "bg-secondary"
-                                  }`}
-                                >
-                                  {selectedPayment.status}
-                                </span>
-                              </td>
+                              <td>{getStatusBadge(selectedPayment.status)}</td>
                             </tr>
                             <tr>
                               <td>
@@ -906,14 +982,20 @@ const Payment = () => {
                                 {selectedPayment.due_date ? (
                                   <span
                                     className={
-                                      new Date(selectedPayment.due_date) <
-                                        new Date() &&
-                                      selectedPayment.status !== "paid"
+                                      isOverdue(selectedPayment)
                                         ? "text-danger fw-bold"
                                         : ""
                                     }
                                   >
                                     {formatDate(selectedPayment.due_date)}
+                                    {isOverdue(selectedPayment) && (
+                                      <div>
+                                        <small className="text-danger">
+                                          <i className="bi bi-exclamation-triangle me-1"></i>
+                                          Terlambat
+                                        </small>
+                                      </div>
+                                    )}
                                   </span>
                                 ) : (
                                   "-"
@@ -963,8 +1045,7 @@ const Payment = () => {
                         <div className="border rounded p-3">
                           <h5 className="text-warning">
                             {formatCurrency(
-                              selectedPayment.amount -
-                                selectedPayment.amount_paid
+                              safeCalculateRemaining(selectedPayment)
                             )}
                           </h5>
                           <small className="text-muted">Sisa Tagihan</small>
@@ -978,19 +1059,10 @@ const Payment = () => {
                           className="progress-bar bg-success"
                           role="progressbar"
                           style={{
-                            width: `${
-                              (selectedPayment.amount_paid /
-                                selectedPayment.amount) *
-                              100
-                            }%`,
+                            width: `${safeCalculateProgress(selectedPayment)}%`,
                           }}
                         >
-                          {(
-                            (selectedPayment.amount_paid /
-                              selectedPayment.amount) *
-                            100
-                          ).toFixed(0)}
-                          %
+                          {safeCalculateProgress(selectedPayment).toFixed(0)}%
                         </div>
                       </div>
                       <div className="d-flex justify-content-between mt-1">
@@ -1036,6 +1108,17 @@ const Payment = () => {
                     </div>
                   </div>
                 )}
+
+                {selectedPayment.notes && (
+                  <div className="card">
+                    <div className="card-header bg-info text-white">
+                      <h6 className="mb-0">Catatan</h6>
+                    </div>
+                    <div className="card-body">
+                      <p className="mb-0">{selectedPayment.notes}</p>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button
@@ -1049,7 +1132,7 @@ const Payment = () => {
                   selectedPayment.receipt_number && (
                     <button
                       type="button"
-                      className="btn btn-success"
+                      className="btn btn-primary"
                       onClick={() => {
                         downloadReceipt(selectedPayment);
                         handleCloseDetail();
@@ -1059,8 +1142,7 @@ const Payment = () => {
                       Download Kwitansi
                     </button>
                   )}
-                {(selectedPayment.status === "pending" ||
-                  selectedPayment.status === "down_payment") && (
+                {canUploadProof(selectedPayment) && (
                   <button
                     type="button"
                     className="btn btn-primary"

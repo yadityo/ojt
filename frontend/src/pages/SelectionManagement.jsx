@@ -250,7 +250,7 @@ const SelectionManagement = () => {
             </div>
           </div>
           <div className="col-md-2">
-            <div className="card bg-warning text-white">
+            <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.pending_selection}</h4>
                 <p className="mb-0">Menunggu</p>
@@ -258,7 +258,7 @@ const SelectionManagement = () => {
             </div>
           </div>
           <div className="col-md-2">
-            <div className="card bg-info text-white">
+            <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.passed_stage_1}</h4>
                 <p className="mb-0">Lolos 1</p>
@@ -274,7 +274,7 @@ const SelectionManagement = () => {
             </div>
           </div>
           <div className="col-md-2">
-            <div className="card bg-success text-white">
+            <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.passed_final}</h4>
                 <p className="mb-0">Lolos</p>
@@ -282,7 +282,7 @@ const SelectionManagement = () => {
             </div>
           </div>
           <div className="col-md-2">
-            <div className="card bg-danger text-white">
+            <div className="card bg-primary text-white">
               <div className="card-body text-center">
                 <h4 className="mb-0">{stats.statistics.failed}</h4>
                 <p className="mb-0">Tidak Lolos</p>
@@ -306,7 +306,7 @@ const SelectionManagement = () => {
                 value={filters.program}
                 onChange={(e) => handleFilterChange("program", e.target.value)}
               >
-                <option value="all">All Programs</option>
+                <option value="all">Semua Program</option>
                 {programs.map((program) => (
                   <option key={program.id} value={program.id}>
                     {program.name}
@@ -321,7 +321,7 @@ const SelectionManagement = () => {
                 value={filters.status}
                 onChange={(e) => handleFilterChange("status", e.target.value)}
               >
-                <option value="all">All Status</option>
+                <option value="all">Semua Status</option>
                 <option value="menunggu">Menunggu</option>
                 <option value="lolos_tahap_1">Lolos Tahap 1</option>
                 <option value="lolos_tahap_2">Lolos Tahap 2</option>
@@ -654,14 +654,14 @@ const SelectionManagement = () => {
                     />
                   </div>
 
-                  {selectedCandidate.application_letter && (
+                  {/* {selectedCandidate.application_letter && (
                     <div className="mt-3">
                       <h6>Surat Lamaran</h6>
                       <div className="bg-light p-3 rounded small">
                         {selectedCandidate.application_letter}
                       </div>
                     </div>
-                  )}
+                  )} */}
                 </div>
                 <div className="modal-footer">
                   <button type="submit" className="btn btn-primary">

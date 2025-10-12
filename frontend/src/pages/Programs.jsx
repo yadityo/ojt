@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import helpers from "../utils/helpers";
 
 const Programs = () => {
   const [programs, setPrograms] = useState([]);
@@ -28,18 +29,18 @@ const Programs = () => {
     }
   };
 
-  const formatRupiah = (value) => {
-    if (value === null || value === undefined || value === "") return "-";
-    const normalized =
-      typeof value === "number"
-        ? value
-        : parseFloat(String(value).replace(/,/g, ""));
-    if (isNaN(normalized)) return "-";
-    return normalized.toLocaleString("id-ID", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-  };
+  // const formatRupiah = (value) => {
+  //   if (value === null || value === undefined || value === "") return "-";
+  //   const normalized =
+  //     typeof value === "number"
+  //       ? value
+  //       : parseFloat(String(value).replace(/,/g, ""));
+  //   if (isNaN(normalized)) return "-";
+  //   return normalized.toLocaleString("id-ID", {
+  //     minimumFractionDigits: 0,
+  //     maximumFractionDigits: 0,
+  //   });
+  // };
 
   const categories = [...new Set(programs.map((p) => p.category_name))];
   const filteredPrograms =
@@ -172,7 +173,7 @@ const Programs = () => {
                         <div className="mb-2">
                           <strong>Biaya Pelatihan:</strong>
                           <h6 className="mb-1">
-                            Rp {formatRupiah(program.training_cost)}
+                            {helpers.formatCurrency(program.training_cost)}
                           </h6>
                         </div>
 
@@ -180,7 +181,7 @@ const Programs = () => {
                         <div className="mb-2">
                           <strong>Biaya Keberangkatan:</strong>
                           <h6 className="mb-1">
-                            Rp {formatRupiah(program.departure_cost)}
+                            {helpers.formatCurrency(program.departure_cost)}
                           </h6>
                         </div>
 

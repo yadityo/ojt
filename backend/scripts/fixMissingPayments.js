@@ -4,8 +4,9 @@ const fixMissingPayments = async () => {
   try {
     console.log("🔧 Checking for registrations without payments...");
 
+    // PERBAIKAN: ganti p.cost dengan p.training_cost
     const [missingPayments] = await db.promise().query(`
-      SELECT r.*, p.cost, p.name as program_name 
+      SELECT r.*, p.training_cost, p.name as program_name 
       FROM registrations r
       JOIN programs p ON r.program_id = p.id
       LEFT JOIN payments py ON r.id = py.registration_id
@@ -25,7 +26,7 @@ const fixMissingPayments = async () => {
         `INSERT INTO payments 
          (registration_id, invoice_number, amount, due_date, status) 
          VALUES (?, ?, ?, ?, 'pending')`,
-        [registration.id, invoiceNumber, registration.cost, dueDate]
+        [registration.id, invoiceNumber, registration.training_cost, dueDate]
       );
 
       console.log(

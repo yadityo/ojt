@@ -241,12 +241,6 @@ body {
   border-color: #dee2e6;
 }
 
-.table-hover tbody tr:hover {
-  background-color: rgba(0, 41, 75, 0.05);
-  transform: scale(1.01);
-  transition: all 0.2s ease;
-}
-
 /* ALERT STYLES */
 .alert {
   border: none;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
+import helpers from "../utils/helpers";
 
 const ProgramRegistration = () => {
   const [currentStep, setCurrentStep] = useState(1);
@@ -11,16 +12,54 @@ const ProgramRegistration = () => {
   const [loading, setLoading] = useState(false);
   const [loadingProvinces, setLoadingProvinces] = useState(false);
   const [loadingCities, setLoadingCities] = useState({});
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState({});
   const [submitLoading, setSubmitLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [registrationResult, setRegistrationResult] = useState(null);
+  const [agreement, setAgreement] = useState(false);
+  const [isSameAsKTP, setIsSameAsKTP] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Form data state
+  const mapValueToLabel = {
+    current_activity: {
+      pelajar: "Pelajar",
+      mahasiswa: "Mahasiswa",
+      bekerja: "Bekerja",
+      tidak_bekerja: "Tidak Bekerja",
+      pencari_kerja: "Pencari Kerja",
+    },
+    marital_status: {
+      belum_menikah: "Belum Menikah",
+      sudah_menikah: "Sudah Menikah",
+      sudah_menikah_dan_memiliki_anak: "Sudah Menikah dan Memiliki Anak",
+    },
+    parent_relationship: {
+      ayah: "Ayah",
+      ibu: "Ibu",
+      kakak: "Kakak",
+      kerabat: "Kerabat",
+    },
+    last_education: {
+      SMA: "SMA/Sederajat",
+      D1: "D1",
+      D2: "D2",
+      D3: "D3",
+      D4: "D4",
+      S1: "S1",
+      S2: "S2",
+      S3: "S3",
+    },
+  };
+
+  const getDisplayLabel = (fieldName, value) => {
+    if (!value) return "-";
+    return mapValueToLabel[fieldName]?.[value] || value;
+  };
+
   const [formData, setFormData] = useState({
-    // Data Diri
     full_name: user?.full_name || "",
     nik: "",
     gender: "",
@@ -31,27 +70,37 @@ const ProgramRegistration = () => {
     last_education: "",
     parent_phone: "",
 
-    // Alamat KTP
+    parent_relationship: "",
+
+    major: "",
+
+    education_institution: "",
+
+    current_activity: "",
+
+    marital_status: "",
+
     ktp_province: "",
     ktp_province_name: "",
     ktp_city: "",
     ktp_city_name: "",
     ktp_address: "",
 
-    // Alamat Domisili
     domicile_province: "",
     domicile_province_name: "",
     domicile_city: "",
     domicile_city_name: "",
     domicile_address: "",
 
-    // Foto
     photo_file: null,
     photo_preview: null,
-    photo_path: "",
 
-    // Program
     program_id: "",
+
+    n4_file: null,
+    n4_preview: null,
+    ssw_file: null,
+    ssw_preview: null,
   });
 
   useEffect(() => {
@@ -59,14 +108,53 @@ const ProgramRegistration = () => {
     fetchProvinces();
   }, []);
 
-  // Clean up photo preview URL
   useEffect(() => {
     return () => {
-      if (formData.photo_preview) {
-        URL.revokeObjectURL(formData.photo_preview);
-      }
+      const previewFields = ["photo", "n4", "ssw"];
+      previewFields.forEach((field) => {
+        const preview = formData[`${field}_preview`];
+        if (preview && typeof preview === "string") {
+          URL.revokeObjectURL(preview);
+        }
+      });
     };
-  }, [formData.photo_preview]);
+  }, []);
+
+  useEffect(() => {
+    if (isSameAsKTP) {
+      setFormData((prev) => ({
+        ...prev,
+        domicile_province: prev.ktp_province,
+        domicile_province_name: prev.ktp_province_name,
+        domicile_city: prev.ktp_city,
+        domicile_city_name: prev.ktp_city_name,
+        domicile_address: prev.ktp_address,
+      }));
+    }
+  }, [
+    isSameAsKTP,
+    formData.ktp_province,
+    formData.ktp_province_name,
+    formData.ktp_city,
+    formData.ktp_city_name,
+    formData.ktp_address,
+  ]);
+
+  useEffect(() => {
+    const isSame =
+      formData.domicile_province === formData.ktp_province &&
+      formData.domicile_city === formData.ktp_city &&
+      formData.domicile_address === formData.ktp_address;
+
+    setIsSameAsKTP(isSame);
+  }, [
+    formData.domicile_province,
+    formData.domicile_city,
+    formData.domicile_address,
+    formData.ktp_province,
+    formData.ktp_city,
+    formData.ktp_address,
+  ]);
 
   const fetchPrograms = async () => {
     try {
@@ -83,7 +171,6 @@ const ProgramRegistration = () => {
     }
   };
 
-  // Fetch provinces melalui proxy backend
   const fetchProvinces = async () => {
     try {
       setLoadingProvinces(true);
@@ -102,7 +189,6 @@ const ProgramRegistration = () => {
     }
   };
 
-  // Fetch cities melalui proxy backend
   const fetchCities = async (provinceCode, type) => {
     try {
       setLoadingCities((prev) => ({ ...prev, [provinceCode]: true }));
@@ -130,78 +216,49 @@ const ProgramRegistration = () => {
     }
   };
 
-  // Handle photo upload
-  const handlePhotoUpload = async (file) => {
-    try {
-      setUploadingPhoto(true);
-      const formData = new FormData();
-      formData.append("photo", file);
-
-      const response = await axios.post(
-        "/api/documents/upload-photo",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
-
-      if (response.data.success) {
-        return response.data.data.file_path;
-      } else {
-        throw new Error("Upload foto gagal");
-      }
-    } catch (error) {
-      console.error("Error uploading photo:", error);
-      throw new Error(error.response?.data?.message || "Gagal mengupload foto");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  // Handle file input change
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
+  const handleFileChange = async (fieldName, file) => {
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      setError("Hanya file gambar yang diizinkan");
-      return;
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "application/pdf",
+    ];
+
+    // Validasi khusus untuk foto
+    if (fieldName === "photo") {
+      if (!file.type.startsWith("image/")) {
+        setError("File foto harus berupa gambar (JPG, PNG)");
+        return;
+      }
+    } else {
+      if (!allowedTypes.includes(file.type)) {
+        setError(`File ${fieldName} harus berupa JPG, PNG, atau PDF`);
+        return;
+      }
     }
 
-    // Validate file size (5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Ukuran file maksimal 5MB");
+    if (file.size > 10 * 1024 * 1024) {
+      setError(`Ukuran file ${fieldName} maksimal 10MB`);
       return;
     }
 
     try {
       setError("");
-      // Create preview
-      const previewUrl = URL.createObjectURL(file);
-      setFormData((prev) => ({
-        ...prev,
-        photo_file: file,
-        photo_preview: previewUrl,
-      }));
 
-      // Auto-upload photo
-      const photoPath = await handlePhotoUpload(file);
+      let previewUrl = null;
+      if (file.type.startsWith("image/")) {
+        previewUrl = URL.createObjectURL(file);
+      }
+
       setFormData((prev) => ({
         ...prev,
-        photo_path: photoPath,
+        [`${fieldName}_file`]: file,
+        [`${fieldName}_preview`]: previewUrl,
       }));
     } catch (error) {
       setError(error.message);
-      // Reset photo if upload fails
-      setFormData((prev) => ({
-        ...prev,
-        photo_file: null,
-        photo_preview: null,
-        photo_path: "",
-      }));
     }
   };
 
@@ -218,9 +275,19 @@ const ProgramRegistration = () => {
         ktp_city_name: "",
       }));
 
-      // Fetch cities for selected province
       if (value && !cities[value]) {
         fetchCities(value, "ktp");
+      }
+
+      // Jika checkbox dicentang, update juga domisili
+      if (isSameAsKTP) {
+        setFormData((prev) => ({
+          ...prev,
+          domicile_province: value,
+          domicile_province_name: selectedProvince ? selectedProvince.name : "",
+          domicile_city: "",
+          domicile_city_name: "",
+        }));
       }
     } else if (name === "ktp_city") {
       const selectedCity = cities[formData.ktp_province]?.find(
@@ -231,6 +298,28 @@ const ProgramRegistration = () => {
         ktp_city: value,
         ktp_city_name: selectedCity ? selectedCity.name : "",
       }));
+
+      // Jika checkbox dicentang, update juga domisili
+      if (isSameAsKTP) {
+        setFormData((prev) => ({
+          ...prev,
+          domicile_city: value,
+          domicile_city_name: selectedCity ? selectedCity.name : "",
+        }));
+      }
+    } else if (name === "ktp_address") {
+      setFormData((prev) => ({
+        ...prev,
+        ktp_address: value,
+      }));
+
+      // Jika checkbox dicentang, update juga domisili
+      if (isSameAsKTP) {
+        setFormData((prev) => ({
+          ...prev,
+          domicile_address: value,
+        }));
+      }
     } else if (name === "domicile_province") {
       const selectedProvince = provinces.find((p) => p.code === value);
       setFormData((prev) => ({
@@ -241,7 +330,6 @@ const ProgramRegistration = () => {
         domicile_city_name: "",
       }));
 
-      // Fetch cities for selected province
       if (value && !cities[value]) {
         fetchCities(value, "domicile");
       }
@@ -258,6 +346,23 @@ const ProgramRegistration = () => {
       setFormData((prev) => ({
         ...prev,
         [name]: value,
+      }));
+    }
+  };
+
+  const handleCheckboxChange = (e) => {
+    const checked = e.target.checked;
+    setIsSameAsKTP(checked);
+
+    if (checked) {
+      // Jika dicentang, salin data KTP ke domisili
+      setFormData((prev) => ({
+        ...prev,
+        domicile_province: prev.ktp_province,
+        domicile_province_name: prev.ktp_province_name,
+        domicile_city: prev.ktp_city,
+        domicile_city_name: prev.ktp_city_name,
+        domicile_address: prev.ktp_address,
       }));
     }
   };
@@ -288,6 +393,18 @@ const ProgramRegistration = () => {
         errors.push("Pendidikan terakhir harus diisi");
       if (!formData.parent_phone)
         errors.push("Nomor handphone orang tua harus diisi");
+
+      // FIELD BARU: Validasi
+      if (!formData.parent_relationship)
+        errors.push("Hubungan dengan orang tua/wali harus dipilih");
+      if (!formData.major) errors.push("Jurusan harus diisi");
+      if (!formData.education_institution)
+        errors.push("Asal institusi pendidikan terakhir harus diisi");
+      if (!formData.current_activity)
+        errors.push("Pekerjaan/aktivitas saat ini harus dipilih");
+      if (!formData.marital_status)
+        errors.push("Status pernikahan harus dipilih");
+
       if (!formData.ktp_province) errors.push("Provinsi KTP harus dipilih");
       if (!formData.ktp_city) errors.push("Kota/Kabupaten KTP harus dipilih");
       if (!formData.ktp_address) errors.push("Alamat KTP harus diisi");
@@ -297,11 +414,26 @@ const ProgramRegistration = () => {
         errors.push("Kota/Kabupaten domisili harus dipilih");
       if (!formData.domicile_address)
         errors.push("Alamat domisili harus diisi");
-      if (!formData.photo_path) errors.push("Foto harus diupload");
+
+      // TAMBAH KEMBALI: Validasi foto
+      if (!formData.photo_file) errors.push("Foto harus diupload");
     }
 
     if (step === 2) {
       if (!formData.program_id) errors.push("Program harus dipilih");
+
+      // Validasi dokumen tambahan untuk Fast Track
+      const selectedProgram = programs.find((p) => p.id == formData.program_id);
+      if (selectedProgram?.name?.toLowerCase().includes("fast track")) {
+        if (!formData.n4_file)
+          errors.push("Sertifikat N4 harus diupload untuk program Fast Track");
+        if (!formData.ssw_file)
+          errors.push("Sertifikat SSW harus diupload untuk program Fast Track");
+      }
+    }
+
+    if (step === 3) {
+      if (!agreement) errors.push("Anda harus menyetujui syarat dan ketentuan");
     }
 
     if (errors.length > 0) {
@@ -321,6 +453,85 @@ const ProgramRegistration = () => {
       setSubmitLoading(true);
       setError("");
 
+      // Upload foto permanen ke server
+      let photoPath = null;
+      if (formData.photo_file) {
+        const photoFormData = new FormData();
+        photoFormData.append("file", formData.photo_file);
+
+        console.log("Uploading photo...");
+        const uploadResponse = await axios.post(
+          "/api/uploads/photo", // PERBAIKI ENDPOINT
+          photoFormData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
+
+        if (uploadResponse.data.success) {
+          photoPath = uploadResponse.data.data.file_path;
+          console.log("Photo uploaded:", photoPath);
+        } else {
+          throw new Error("Gagal mengupload foto");
+        }
+      }
+
+      // Upload dokumen Fast Track jika ada
+      let n4Path = null;
+      let sswPath = null;
+
+      if (isFastTrack) {
+        if (formData.n4_file) {
+          const n4FormData = new FormData();
+          n4FormData.append("file", formData.n4_file);
+          n4FormData.append("type", "n4_certificate");
+
+          console.log("Uploading N4 certificate...");
+          const n4Response = await axios.post(
+            "/api/uploads/document", // PERBAIKI ENDPOINT
+            n4FormData,
+            {
+              headers: {
+                "Content-Type": "multipart/form-data",
+              },
+            }
+          );
+
+          if (n4Response.data.success) {
+            n4Path = n4Response.data.data.file_path;
+            console.log("N4 certificate uploaded:", n4Path);
+          } else {
+            throw new Error("Gagal mengupload sertifikat N4");
+          }
+        }
+
+        if (formData.ssw_file) {
+          const sswFormData = new FormData();
+          sswFormData.append("file", formData.ssw_file);
+          sswFormData.append("type", "ssw_certificate");
+
+          console.log("Uploading SSW certificate...");
+          const sswResponse = await axios.post(
+            "/api/uploads/document", // PERBAIKI ENDPOINT
+            sswFormData,
+            {
+              headers: {
+                "Content-Type": "multipart/form-data",
+              },
+            }
+          );
+
+          if (sswResponse.data.success) {
+            sswPath = sswResponse.data.data.file_path;
+            console.log("SSW certificate uploaded:", sswPath);
+          } else {
+            throw new Error("Gagal mengupload sertifikat SSW");
+          }
+        }
+      }
+
       // Prepare data for backend
       const registrationData = {
         user_id: user.id,
@@ -332,6 +543,14 @@ const ProgramRegistration = () => {
         birth_date: formData.birth_date,
         last_education: formData.last_education,
         parent_phone: formData.parent_phone,
+
+        // FIELD BARU
+        parent_relationship: formData.parent_relationship,
+        major: formData.major,
+        education_institution: formData.education_institution,
+        current_activity: formData.current_activity,
+        marital_status: formData.marital_status,
+
         ktp_province_code: formData.ktp_province,
         ktp_province_name: formData.ktp_province_name,
         ktp_city_code: formData.ktp_city,
@@ -342,7 +561,14 @@ const ProgramRegistration = () => {
         domicile_city_code: formData.domicile_city,
         domicile_city_name: formData.domicile_city_name,
         domicile_address: formData.domicile_address,
-        photo_path: formData.photo_path,
+
+        // Photo path
+        photo_path: photoPath,
+
+        // Dokumen Fast Track
+        n4_certificate_path: n4Path,
+        ssw_certificate_path: sswPath,
+
         // Data user untuk update
         user_data: {
           full_name: formData.full_name,
@@ -350,18 +576,19 @@ const ProgramRegistration = () => {
         },
       };
 
+      console.log("Sending registration data:", registrationData);
+
       const response = await axios.post("/api/registrations", registrationData);
 
       if (response.data.success) {
-        setSuccess("Pendaftaran berhasil! Silakan tunggu proses seleksi.");
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 3000);
+        setRegistrationResult(response.data.data);
+        setShowSuccessModal(true);
       } else {
         setError(response.data.message || "Gagal melakukan pendaftaran");
       }
     } catch (error) {
       console.error("Registration error:", error);
+      console.error("Error details:", error.response?.data);
       setError(
         error.response?.data?.message ||
           "Terjadi kesalahan saat mendaftar. Silakan coba lagi."
@@ -379,14 +606,22 @@ const ProgramRegistration = () => {
     return loadingCities[provinceCode] || false;
   };
 
-  // Step 1: Data Diri
+  const isUploading = (fieldName) => {
+    return uploadingFiles[fieldName] || false;
+  };
+
+  const selectedProgram = programs.find((p) => p.id == formData.program_id);
+  const isFastTrack = selectedProgram?.name
+    ?.toLowerCase()
+    .includes("fast track");
+
+  // Step 1: Data Diri - DENGAN UPLOAD FOTO
   const renderStep1 = () => (
     <div className="row">
       <div className="col-12">
         <h4 className="mb-4">Data Diri</h4>
       </div>
 
-      {/* Upload Foto */}
       <div className="col-12 mb-4">
         <div className="card">
           <div className="card-body">
@@ -400,14 +635,16 @@ const ProgramRegistration = () => {
                   type="file"
                   className="form-control"
                   id="photo"
-                  name="photo"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  disabled={uploadingPhoto}
+                  accept=".jpg,.jpeg,.png"
+                  onChange={(e) => handleFileChange("photo", e.target.files[0])}
+                  disabled={isUploading("photo")}
                   required
                 />
-                <div className="form-text">Format: JPG, PNG (Maksimal 5MB)</div>
-                {uploadingPhoto && (
+                <div className="form-text">
+                  Format: JPG, PNG (Maksimal 10MB). Foto terbaru dengan latar
+                  belakang polos.
+                </div>
+                {isUploading("photo") && (
                   <div className="mt-2">
                     <div
                       className="spinner-border spinner-border-sm"
@@ -437,13 +674,6 @@ const ProgramRegistration = () => {
                         objectFit: "cover",
                       }}
                     />
-                    {formData.photo_path && (
-                      <div className="mt-2">
-                        <span className="badge bg-success">
-                          ✓ Foto berhasil diupload
-                        </span>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -452,7 +682,6 @@ const ProgramRegistration = () => {
         </div>
       </div>
 
-      {/* Data Pribadi */}
       <div className="col-12">
         <h5 className="mb-3">Data Pribadi</h5>
       </div>
@@ -596,10 +825,108 @@ const ProgramRegistration = () => {
         </select>
       </div>
 
-      {/* Baris 5 */}
+      {/* FIELD BARU: Baris 5 - Data Tambahan */}
+
+      <div className="col-md-6 mb-3">
+        <label htmlFor="major" className="form-label">
+          Jurusan <span className="text-danger">*</span>
+        </label>
+        <input
+          type="text"
+          className="form-control"
+          id="major"
+          name="major"
+          value={formData.major}
+          onChange={handleInputChange}
+          placeholder="Contoh: Teknik Informatika, Akuntansi, dll."
+          required
+        />
+      </div>
+
+      {/* FIELD BARU: Baris 6 - Data Tambahan */}
+      <div className="col-md-6 mb-3">
+        <label htmlFor="education_institution" className="form-label">
+          Asal Institusi Pendidikan Terakhir{" "}
+          <span className="text-danger">*</span>
+        </label>
+        <input
+          type="text"
+          className="form-control"
+          id="education_institution"
+          name="education_institution"
+          value={formData.education_institution}
+          onChange={handleInputChange}
+          placeholder="Contoh: Universitas Indonesia, SMAN 1 Jakarta, dll."
+          required
+        />
+      </div>
+
+      <div className="col-md-6 mb-3">
+        <label htmlFor="current_activity" className="form-label">
+          Pekerjaan/Aktivitas Saat Ini <span className="text-danger">*</span>
+        </label>
+        <select
+          className="form-select"
+          id="current_activity"
+          name="current_activity"
+          value={formData.current_activity}
+          onChange={handleInputChange}
+          required
+        >
+          <option value="">Pilih Aktivitas</option>
+          <option value="pelajar">Pelajar</option>
+          <option value="mahasiswa">Mahasiswa</option>
+          <option value="bekerja">Bekerja</option>
+          <option value="tidak_bekerja">Tidak Bekerja</option>
+          <option value="pencari_kerja">Pencari Kerja</option>
+        </select>
+      </div>
+
+      {/* FIELD BARU: Baris 7 - Data Tambahan */}
+      <div className="col-md-6 mb-3">
+        <label htmlFor="marital_status" className="form-label">
+          Status Pernikahan <span className="text-danger">*</span>
+        </label>
+        <select
+          className="form-select"
+          id="marital_status"
+          name="marital_status"
+          value={formData.marital_status}
+          onChange={handleInputChange}
+          required
+        >
+          <option value="">Pilih Status</option>
+          <option value="belum_menikah">Belum Menikah</option>
+          <option value="sudah_menikah">Sudah Menikah</option>
+          <option value="sudah_menikah_dan_memiliki_anak">
+            Sudah Menikah dan Memiliki Anak
+          </option>
+        </select>
+      </div>
+
+      <div className="col-md-6 mb-3">
+        <label htmlFor="parent_relationship" className="form-label">
+          Hubungan dengan Orang Tua/Wali <span className="text-danger">*</span>
+        </label>
+        <select
+          className="form-select"
+          id="parent_relationship"
+          name="parent_relationship"
+          value={formData.parent_relationship}
+          onChange={handleInputChange}
+          required
+        >
+          <option value="">Pilih Hubungan</option>
+          <option value="ayah">Ayah</option>
+          <option value="ibu">Ibu</option>
+          <option value="kakak">Kakak</option>
+          <option value="kerabat">Kerabat</option>
+        </select>
+      </div>
+
       <div className="col-md-6 mb-3">
         <label htmlFor="parent_phone" className="form-label">
-          Nomor Handphone Orang Tua <span className="text-danger">*</span>
+          Nomor Handphone Orang Tua/Wali <span className="text-danger">*</span>
         </label>
         <input
           type="tel"
@@ -616,7 +943,7 @@ const ProgramRegistration = () => {
         <h5>Alamat Sesuai KTP</h5>
       </div>
 
-      {/* Baris 6 - Alamat KTP */}
+      {/* Baris 8 - Alamat KTP */}
       <div className="col-md-6 mb-3">
         <label htmlFor="ktp_province" className="form-label">
           Provinsi <span className="text-danger">*</span>
@@ -704,27 +1031,8 @@ const ProgramRegistration = () => {
             className="form-check-input"
             type="checkbox"
             id="same_as_ktp"
-            onChange={(e) => {
-              if (e.target.checked) {
-                setFormData((prev) => ({
-                  ...prev,
-                  domicile_province: prev.ktp_province,
-                  domicile_province_name: prev.ktp_province_name,
-                  domicile_city: prev.ktp_city,
-                  domicile_city_name: prev.ktp_city_name,
-                  domicile_address: prev.ktp_address,
-                }));
-              } else {
-                setFormData((prev) => ({
-                  ...prev,
-                  domicile_province: "",
-                  domicile_province_name: "",
-                  domicile_city: "",
-                  domicile_city_name: "",
-                  domicile_address: "",
-                }));
-              }
-            }}
+            checked={isSameAsKTP}
+            onChange={handleCheckboxChange}
           />
           <label className="form-check-label" htmlFor="same_as_ktp">
             Sama dengan alamat KTP
@@ -732,7 +1040,7 @@ const ProgramRegistration = () => {
         </div>
       </div>
 
-      {/* Baris 7 - Alamat Domisili */}
+      {/* Baris 9 - Alamat Domisili */}
       <div className="col-md-6 mb-3">
         <label htmlFor="domicile_province" className="form-label">
           Provinsi <span className="text-danger">*</span>
@@ -743,6 +1051,7 @@ const ProgramRegistration = () => {
           name="domicile_province"
           value={formData.domicile_province}
           onChange={handleInputChange}
+          disabled={isSameAsKTP}
           required
         >
           <option value="">Pilih Provinsi</option>
@@ -771,6 +1080,7 @@ const ProgramRegistration = () => {
           value={formData.domicile_city}
           onChange={handleInputChange}
           disabled={
+            isSameAsKTP ||
             !formData.domicile_province ||
             isCitiesLoading(formData.domicile_province)
           }
@@ -809,95 +1119,191 @@ const ProgramRegistration = () => {
           value={formData.domicile_address}
           onChange={handleInputChange}
           placeholder="Masukkan alamat lengkap domisili saat ini"
+          disabled={isSameAsKTP}
           required
         ></textarea>
       </div>
     </div>
   );
 
-  // Step 2: Pemilihan Program
+  // Step 2: Pemilihan Program dan Dokumen - Radio button dan hapus dokumen umum
   const renderStep2 = () => (
     <div className="row">
       <div className="col-12">
-        <h4 className="mb-4">Pemilihan Program</h4>
+        <h4 className="mb-4">Pemilihan Program dan Dokumen</h4>
 
-        {loading ? (
-          <div className="text-center">
-            <div className="spinner-border" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-            <p className="mt-2">Memuat data program...</p>
+        {/* Pilihan Program dengan Radio Button */}
+        <div className="card mb-4">
+          <div className="card-header">
+            <h5>
+              1. Pilih Program <span className="text-danger">*</span>
+            </h5>
           </div>
-        ) : programs.length === 0 ? (
-          <div className="alert alert-warning">
-            <p>Tidak ada program yang tersedia saat ini.</p>
-          </div>
-        ) : (
-          <div className="row">
-            {programs.map((program) => (
-              <div key={program.id} className="col-md-6 mb-4">
-                <div
-                  className={`card h-100 ${
-                    formData.program_id === program.id ? "border-primary" : ""
-                  }`}
-                >
-                  <div className="card-body">
-                    <h5 className="card-title">{program.name}</h5>
-                    <p className="card-text text-muted small">
-                      {program.description?.substring(0, 150)}...
-                    </p>
-                    <div className="mb-2">
-                      <strong>Durasi:</strong> {program.duration}
+          <div className="card-body">
+            {loading ? (
+              <div className="text-center">
+                <div className="spinner-border" role="status">
+                  <span className="visually-hidden">Loading...</span>
+                </div>
+                <p className="mt-2">Memuat data program...</p>
+              </div>
+            ) : programs.length === 0 ? (
+              <div className="alert alert-warning">
+                <p>Tidak ada program yang tersedia saat ini.</p>
+              </div>
+            ) : (
+              <div className="row">
+                {programs.map((program) => (
+                  <div key={program.id} className="col-md-6 mb-3">
+                    <div className="card h-100">
+                      <div className="card-body">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="radio"
+                            name="program_selection"
+                            id={`program-${program.id}`}
+                            value={program.id}
+                            checked={formData.program_id == program.id}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                program_id: e.target.value,
+                              }))
+                            }
+                          />
+                          <label
+                            className="form-check-label w-100"
+                            htmlFor={`program-${program.id}`}
+                          >
+                            <h5 className="card-title">{program.name}</h5>
+                            <p className="card-text text-muted small">
+                              {program.description?.substring(0, 150)}...
+                            </p>
+                            <div className="mb-2">
+                              <strong>Durasi:</strong> {program.duration}
+                            </div>
+                            <div className="mb-2">
+                              <strong>Biaya:</strong>{" "}
+                              {helpers.formatCurrency(program.training_cost)}
+                            </div>
+                            <div className="mb-2">
+                              <strong>Jadwal:</strong> {program.schedule}
+                            </div>
+                          </label>
+                        </div>
+                      </div>
                     </div>
-                    <div className="mb-2">
-                      <strong>Biaya:</strong> Rp{" "}
-                      {program.cost?.toLocaleString("id-ID")}
-                    </div>
-                    <div className="mb-3">
-                      <strong>Jadwal:</strong> {program.schedule}
-                    </div>
-                    <button
-                      type="button"
-                      className={`btn ${
-                        formData.program_id === program.id
-                          ? "btn-primary"
-                          : "btn-outline-primary"
-                      }`}
-                      onClick={() =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          program_id: program.id,
-                        }))
-                      }
-                    >
-                      {formData.program_id === program.id
-                        ? "✓ Terpilih"
-                        : "Pilih Program"}
-                    </button>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {formData.program_id && (
+              <div className="alert alert-info mt-3">
+                <strong>Program Terpilih:</strong>{" "}
+                {programs.find((p) => p.id == formData.program_id)?.name}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Dokumen Tambahan untuk Fast Track */}
+        {isFastTrack && (
+          <div className="card">
+            <div className="card-header">
+              <h5>
+                2. Dokumen Tambahan (Fast Track){" "}
+                <span className="text-danger">*</span>
+              </h5>
+            </div>
+            <div className="card-body">
+              <div className="row">
+                <div className="col-md-6 mb-3">
+                  <label htmlFor="n4" className="form-label">
+                    Sertifikat N4 <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="file"
+                    className="form-control"
+                    id="n4"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => handleFileChange("n4", e.target.files[0])}
+                    disabled={isUploading("n4")}
+                    required={isFastTrack}
+                  />
+                  <div className="form-text">
+                    Format: JPG, PNG, PDF (Maksimal 10MB)
+                  </div>
+                  {formData.n4_preview && (
+                    <div className="mt-2">
+                      {formData.n4_file.type.startsWith("image/") ? (
+                        <img
+                          src={formData.n4_preview}
+                          alt="Preview N4"
+                          className="img-thumbnail"
+                          style={{ maxWidth: "200px" }}
+                        />
+                      ) : (
+                        <div className="text-center">
+                          <i className="bi bi-file-pdf fs-1 text-danger"></i>
+                          <p className="small">{formData.n4_file.name}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-md-6 mb-3">
+                  <label htmlFor="ssw" className="form-label">
+                    Sertifikat SSW <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="file"
+                    className="form-control"
+                    id="ssw"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    onChange={(e) => handleFileChange("ssw", e.target.files[0])}
+                    disabled={isUploading("ssw")}
+                    required={isFastTrack}
+                  />
+                  <div className="form-text">
+                    Format: JPG, PNG, PDF (Maksimal 10MB)
+                  </div>
+                  {formData.ssw_preview && (
+                    <div className="mt-2">
+                      {formData.ssw_file.type.startsWith("image/") ? (
+                        <img
+                          src={formData.ssw_preview}
+                          alt="Preview SSW"
+                          className="img-thumbnail"
+                          style={{ maxWidth: "200px" }}
+                        />
+                      ) : (
+                        <div className="text-center">
+                          <i className="bi bi-file-pdf fs-1 text-danger"></i>
+                          <p className="small">{formData.ssw_file.name}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-
-        {formData.program_id && (
-          <div className="alert alert-info mt-3">
-            <strong>Program Terpilih:</strong>{" "}
-            {programs.find((p) => p.id == formData.program_id)?.name}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 
-  // Step 3: Konfirmasi
+  // Step 3: Konfirmasi - DENGAN FOTO dan LABEL YANG BENAR
   const renderStep3 = () => (
     <div className="row">
       <div className="col-12">
         <h4 className="mb-4">Konfirmasi Pendaftaran</h4>
 
-        <div className="card">
+        {/* Foto */}
+        <div className="card mb-3">
           <div className="card-header">
             <h5>Foto</h5>
           </div>
@@ -921,7 +1327,8 @@ const ProgramRegistration = () => {
           </div>
         </div>
 
-        <div className="card mt-3">
+        {/* Data Diri dengan Field Baru - DENGAN LABEL YANG BENAR */}
+        <div className="card mb-3">
           <div className="card-header">
             <h5>Data Diri</h5>
           </div>
@@ -945,58 +1352,95 @@ const ProgramRegistration = () => {
                 <p>
                   <strong>Email:</strong> {formData.email}
                 </p>
-              </div>
-              <div className="col-md-6">
                 <p>
                   <strong>No. Handphone:</strong> {formData.phone}
                 </p>
                 <p>
                   <strong>Pendidikan Terakhir:</strong>{" "}
-                  {formData.last_education}
+                  {getDisplayLabel("last_education", formData.last_education)}
+                </p>
+              </div>
+              <div className="col-md-6">
+                {/* FIELD BARU: Data Tambahan dengan LABEL YANG BENAR */}
+                <p>
+                  <strong>Hubungan dengan Orang Tua/Wali:</strong>{" "}
+                  {getDisplayLabel(
+                    "parent_relationship",
+                    formData.parent_relationship
+                  )}
                 </p>
                 <p>
-                  <strong>No. HP Orang Tua:</strong> {formData.parent_phone}
+                  <strong>Jurusan:</strong> {formData.major}
+                </p>
+                <p>
+                  <strong>Asal Institusi Pendidikan:</strong>{" "}
+                  {formData.education_institution}
+                </p>
+                <p>
+                  <strong>Pekerjaan/Aktivitas Saat Ini:</strong>{" "}
+                  {getDisplayLabel(
+                    "current_activity",
+                    formData.current_activity
+                  )}
+                </p>
+                <p>
+                  <strong>Status Pernikahan:</strong>{" "}
+                  {getDisplayLabel("marital_status", formData.marital_status)}
+                </p>
+                <p>
+                  <strong>No. HP Orang Tua/Wali:</strong>{" "}
+                  {formData.parent_phone}
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card mt-3">
+        {/* Alamat */}
+        <div className="card mb-3">
           <div className="card-header">
-            <h5>Alamat KTP</h5>
+            <h5>Alamat</h5>
           </div>
           <div className="card-body">
-            <p>
-              <strong>Provinsi:</strong> {formData.ktp_province_name}
-            </p>
-            <p>
-              <strong>Kota/Kabupaten:</strong> {formData.ktp_city_name}
-            </p>
-            <p>
-              <strong>Alamat:</strong> {formData.ktp_address}
-            </p>
+            <div className="row">
+              <div className="col-md-6">
+                <h6>Alamat KTP</h6>
+                <p>
+                  <strong>Provinsi:</strong> {formData.ktp_province_name}
+                </p>
+                <p>
+                  <strong>Kota/Kabupaten:</strong> {formData.ktp_city_name}
+                </p>
+                <p>
+                  <strong>Alamat:</strong> {formData.ktp_address}
+                </p>
+              </div>
+              <div className="col-md-6">
+                <h6>Alamat Domisili</h6>
+                <p>
+                  <strong>Provinsi:</strong> {formData.domicile_province_name}
+                </p>
+                <p>
+                  <strong>Kota/Kabupaten:</strong> {formData.domicile_city_name}
+                </p>
+                <p>
+                  <strong>Alamat:</strong> {formData.domicile_address}
+                </p>
+                {isSameAsKTP && (
+                  <div className="alert alert-info mt-2 p-2">
+                    <small>
+                      <i className="bi bi-info-circle"></i> Alamat domisili sama
+                      dengan alamat KTP
+                    </small>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="card mt-3">
-          <div className="card-header">
-            <h5>Alamat Domisili</h5>
-          </div>
-          <div className="card-body">
-            <p>
-              <strong>Provinsi:</strong> {formData.domicile_province_name}
-            </p>
-            <p>
-              <strong>Kota/Kabupaten:</strong> {formData.domicile_city_name}
-            </p>
-            <p>
-              <strong>Alamat:</strong> {formData.domicile_address}
-            </p>
-          </div>
-        </div>
-
-        <div className="card mt-3">
+        {/* Program */}
+        <div className="card mb-3">
           <div className="card-header">
             <h5>Program yang Dipilih</h5>
           </div>
@@ -1010,11 +1454,62 @@ const ProgramRegistration = () => {
               {programs.find((p) => p.id == formData.program_id)?.duration}
             </p>
             <p>
-              <strong>Biaya:</strong> Rp{" "}
-              {programs
-                .find((p) => p.id == formData.program_id)
-                ?.cost?.toLocaleString("id-ID")}
+              <strong>Biaya:</strong>{" "}
+              {helpers.formatCurrency(
+                programs.find((p) => p.id == formData.program_id)?.training_cost
+              )}
             </p>
+          </div>
+        </div>
+
+        {/* Dokumen - HANYA untuk Fast Track */}
+        {isFastTrack && (
+          <div className="card mb-3">
+            <div className="card-header">
+              <h5>Dokumen Tambahan (Fast Track)</h5>
+            </div>
+            <div className="card-body">
+              <div className="row">
+                <div className="col-md-6">
+                  <p>
+                    <strong>Sertifikat N4:</strong>{" "}
+                    {formData.n4_file
+                      ? formData.n4_file.name
+                      : "Belum diupload"}
+                  </p>
+                </div>
+                <div className="col-md-6">
+                  <p>
+                    <strong>Sertifikat SSW:</strong>{" "}
+                    {formData.ssw_file
+                      ? formData.ssw_file.name
+                      : "Belum diupload"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Agreement Checkbox */}
+        <div className="card">
+          <div className="card-body">
+            <div className="form-check">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id="agreement"
+                checked={agreement}
+                onChange={(e) => setAgreement(e.target.checked)}
+                required
+              />
+              <label className="form-check-label" htmlFor="agreement">
+                Saya menyatakan bahwa semua data yang tercera di atas adalah
+                benar dan valid. Saya juga telah membaca, memahami, dan
+                menyetujui semua Syarat dan Ketentuan Program yang berlaku di
+                FITALENTA. <span className="text-danger">*</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1025,6 +1520,58 @@ const ProgramRegistration = () => {
             dikirim tidak dapat diubah. Setelah mengirim formulir, Anda akan
             masuk ke proses seleksi.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Success Modal
+  const SuccessModal = () => (
+    <div
+      className={`modal fade ${showSuccessModal ? "show" : ""}`}
+      style={{ display: showSuccessModal ? "block" : "none" }}
+      tabIndex="-1"
+    >
+      <div className="modal-dialog modal-dialog-centered">
+        <div className="modal-content">
+          <div className="modal-header bg-primary text-white">
+            <h5 className="modal-title">Pendaftaran Berhasil!</h5>
+          </div>
+          <div className="modal-body text-center">
+            <div className="mb-4">
+              <i
+                className="bi bi-check-circle-fill text-success"
+                style={{ fontSize: "4rem" }}
+              ></i>
+            </div>
+            <h4 className="text-primary mb-3">
+              Selamat! Pendaftaran Anda Berhasil Diterima!
+            </h4>
+            <p className="mb-3">
+              Terima kasih telah mendaftar di Program{" "}
+              <strong>
+                {programs.find((p) => p.id == formData.program_id)?.name}
+              </strong>
+            </p>
+            <div className="alert alert-info">
+              <h5>Nomor Pendaftaran Anda:</h5>
+              <h4 className="text-primary">
+                #{registrationResult?.registration_code}
+              </h4>
+            </div>
+            <p className="text-muted">
+              Silakan lakukan pembayaran untuk melanjutkan proses seleksi.
+            </p>
+          </div>
+          <div className="modal-footer justify-content-center">
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              onClick={() => navigate("/payment")}
+            >
+              Lakukan Pembayaran
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1060,7 +1607,7 @@ const ProgramRegistration = () => {
                     </div>
                     <div className="mt-2 small">
                       {step === 1 && "Data Diri"}
-                      {step === 2 && "Pemilihan Program"}
+                      {step === 2 && "Program & Dokumen"}
                       {step === 3 && "Konfirmasi"}
                     </div>
                   </div>
@@ -1131,7 +1678,7 @@ const ProgramRegistration = () => {
                           Mengirim...
                         </>
                       ) : (
-                        "✓ Lanjutkan Pendaftaran"
+                        "✓ Selesaikan Pendaftaran"
                       )}
                     </button>
                   )}
@@ -1141,6 +1688,12 @@ const ProgramRegistration = () => {
           </form>
         </div>
       </div>
+
+      {/* Success Modal */}
+      <SuccessModal />
+
+      {/* Modal Backdrop */}
+      {showSuccessModal && <div className="modal-backdrop fade show"></div>}
     </div>
   );
 };

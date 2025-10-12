@@ -21,9 +21,9 @@ import userDashboardRoutes from "./routes/userDashboard.js";
 import selectionRoutes from "./routes/selection.js";
 import placementRoutes from "./routes/placement.js";
 import reportRoutes from "./routes/reports.js";
-// import provinceRoutes from "./routes/provinces.js";
+import programCategoriesRoutes from "./routes/program-categories.js";
 import wilayahRoutes from "./routes/wilayah.js";
-import documentRoutes from "./routes/documents.js";
+import uploadRoutes from "./routes/uploads.js";
 
 dotenv.config();
 
@@ -58,7 +58,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Static files
+// Static files - HARUS SEBELUM ROUTES
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Request logging middleware
@@ -89,9 +89,9 @@ app.use("/api/user-dashboard", userDashboardRoutes);
 app.use("/api/selection", selectionRoutes);
 app.use("/api/placement", placementRoutes);
 app.use("/api/reports", reportRoutes);
-// app.use("/api/provinces", provinceRoutes);
+app.use("/api/program-categories", programCategoriesRoutes);
 app.use("/api/wilayah", wilayahRoutes);
-app.use("/api/documents", documentRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 // Error handling middleware
 app.use((error, req, res, next) => {

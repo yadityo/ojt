@@ -12,13 +12,11 @@ router.get("/", async (req, res) => {
       SELECT 
         ps.*,
         r.registration_code,
-        r.status as registration_status,
         u.full_name,
         u.email,
         u.phone,
         p.name as program_name,
-        ss.status as selection_status,
-        ss.final_score
+        ss.status as selection_status
       FROM placement_status ps
       LEFT JOIN registrations r ON ps.registration_id = r.id
       LEFT JOIN users u ON r.user_id = u.id
@@ -40,9 +38,9 @@ router.get("/", async (req, res) => {
 
     if (search) {
       query +=
-        " AND (u.full_name LIKE ? OR u.email LIKE ? OR r.registration_code LIKE ? OR ps.company_name LIKE ?)";
+        " AND (u.full_name LIKE ? OR u.email LIKE ? OR r.registration_code LIKE ?)";
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm);
     }
 
     query += " ORDER BY ps.created_at DESC";
@@ -65,16 +63,7 @@ router.get("/", async (req, res) => {
 // Update placement status
 router.put("/:registrationId", async (req, res) => {
   try {
-    const {
-      status,
-      company_name,
-      position,
-      department,
-      placement_date,
-      supervisor_name,
-      supervisor_contact,
-      notes,
-    } = req.body;
+    const { status, company_name, placement_date, notes } = req.body;
 
     // Check if placement record exists
     const [existing] = await db
@@ -92,20 +81,9 @@ router.put("/:registrationId", async (req, res) => {
 
     await db.promise().query(
       `UPDATE placement_status 
-       SET status = ?, company_name = ?, position = ?, department = ?, placement_date = ?,
-           supervisor_name = ?, supervisor_contact = ?, notes = ? 
+       SET status = ?, company_name = ?, placement_date = ?, notes = ? 
        WHERE registration_id = ?`,
-      [
-        status,
-        company_name,
-        position,
-        department,
-        placement_date,
-        supervisor_name,
-        supervisor_contact,
-        notes,
-        req.params.registrationId,
-      ]
+      [status, company_name, placement_date, notes, req.params.registrationId]
     );
 
     res.json({
@@ -121,7 +99,7 @@ router.put("/:registrationId", async (req, res) => {
   }
 });
 
-// Get placement statistics
+// Get placement statistics - DIUBAH: hapus count untuk 'gagal'
 router.get("/statistics", async (req, res) => {
   try {
     const [stats] = await db.promise().query(`
@@ -129,11 +107,8 @@ router.get("/statistics", async (req, res) => {
         COUNT(*) as total_placements,
         SUM(CASE WHEN status = 'proses' THEN 1 ELSE 0 END) as in_process,
         SUM(CASE WHEN status = 'lolos' THEN 1 ELSE 0 END) as passed,
-        SUM(CASE WHEN status = 'ditempatkan' THEN 1 ELSE 0 END) as placed,
-        SUM(CASE WHEN status = 'gagal' THEN 1 ELSE 0 END) as failed,
-        COUNT(DISTINCT company_name) as total_companies
+        SUM(CASE WHEN status = 'ditempatkan' THEN 1 ELSE 0 END) as placed
       FROM placement_status
-      WHERE company_name IS NOT NULL AND company_name != ''
     `);
 
     // Get recent placements
@@ -151,24 +126,11 @@ router.get("/statistics", async (req, res) => {
       LIMIT 5
     `);
 
-    // Get company statistics
-    const [companyStats] = await db.promise().query(`
-      SELECT 
-        company_name,
-        COUNT(*) as total_placements
-      FROM placement_status 
-      WHERE company_name IS NOT NULL AND company_name != ''
-      GROUP BY company_name
-      ORDER BY total_placements DESC
-      LIMIT 10
-    `);
-
     res.json({
       success: true,
       data: {
         statistics: stats[0],
         recentPlacements,
-        companyStats,
       },
     });
   } catch (error) {
@@ -183,14 +145,7 @@ router.get("/statistics", async (req, res) => {
 // Bulk update placement status
 router.post("/bulk-update", async (req, res) => {
   try {
-    const {
-      registration_ids,
-      status,
-      company_name,
-      position,
-      department,
-      notes,
-    } = req.body;
+    const { registration_ids, status, notes } = req.body;
 
     if (
       !registration_ids ||
@@ -206,9 +161,9 @@ router.post("/bulk-update", async (req, res) => {
     for (const registrationId of registration_ids) {
       await db.promise().query(
         `UPDATE placement_status 
-         SET status = ?, company_name = ?, position = ?, department = ?, notes = ? 
+         SET status = ?, notes = ? 
          WHERE registration_id = ?`,
-        [status, company_name, position, department, notes, registrationId]
+        [status, notes, registrationId]
       );
     }
 

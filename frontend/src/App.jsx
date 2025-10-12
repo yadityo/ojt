@@ -13,9 +13,11 @@ import UserDashboard from "./pages/UserDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import Payment from "./pages/Payment";
 import PaymentManagement from "./pages/PaymentManagement";
-import SelectionManagement from "./pages/SelectionManagement";
-import PlacementManagement from "./pages/PlacementManagement";
+// import SelectionManagement from "./pages/SelectionManagement";
+// import PlacementManagement from "./pages/PlacementManagement";
+import SelectionAndPlacementManagement from "./pages/SelectionAndPlacementManagement";
 import FinancialReports from "./pages/FinancialReports";
+import ProgramManagement from "./pages/ProgramManagement";
 import AboutUs from "./pages/AboutUs";
 import Contact from "./pages/Contact";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -177,7 +179,7 @@ function App() {
             </AdminRoute>
           }
         />
-        <Route
+        {/* <Route
           path="/admin/selection"
           element={
             <AdminRoute>
@@ -192,12 +194,28 @@ function App() {
               <PlacementManagement />
             </AdminRoute>
           }
+        /> */}
+        <Route
+          path="/admin/selection-and-placement"
+          element={
+            <AdminRoute>
+              <SelectionAndPlacementManagement />
+            </AdminRoute>
+          }
         />
         <Route
           path="/admin/financial-reports"
           element={
             <AdminRoute>
               <FinancialReports />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/programs"
+          element={
+            <AdminRoute>
+              <ProgramManagement />
             </AdminRoute>
           }
         />

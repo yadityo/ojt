@@ -46,20 +46,30 @@ const AdminLayout = ({ children }) => {
       icon: "bi-credit-card",
       label: "Manajemen Pembayaran",
     },
+    // {
+    //   path: "/admin/selection",
+    //   icon: "bi-clipboard-check",
+    //   label: "Manajemen Seleksi",
+    // },
+    // {
+    //   path: "/admin/placement",
+    //   icon: "bi-briefcase",
+    //   label: "Manajemen Penyaluran",
+    // },
     {
-      path: "/admin/selection",
+      path: "/admin/selection-and-placement",
       icon: "bi-clipboard-check",
-      label: "Manajemen Seleksi",
-    },
-    {
-      path: "/admin/placement",
-      icon: "bi-briefcase",
-      label: "Manajemen Penyaluran",
+      label: "Manajemen Selection & Penyaluran",
     },
     {
       path: "/admin/financial-reports",
       icon: "bi-graph-up",
       label: "Laporan Keuangan",
+    },
+    {
+      path: "/admin/programs",
+      icon: "bi-journal-text",
+      label: "Manajemen Program",
     },
   ];
 
@@ -67,33 +77,37 @@ const AdminLayout = ({ children }) => {
     if (menuItem.exact) {
       return location.pathname === menuItem.path;
     }
+    // return (
+    //   location.pathname.startsWith(menuItem.path) && menuItem.path !== "/admin"
+    // );
     return (
-      location.pathname.startsWith(menuItem.path) && menuItem.path !== "/admin"
+      location.pathname === menuItem.path ||
+      location.pathname.startsWith(menuItem.path + "/")
     );
   };
 
-  const getPageTitle = () => {
-    const currentItem = menuItems.find((item) => isActive(item));
-    if (currentItem) return currentItem.label;
+  // const getPageTitle = () => {
+  //   const currentItem = menuItems.find((item) => isActive(item));
+  //   if (currentItem) return currentItem.label;
 
-    if (location.pathname.startsWith("/admin/payments"))
-      return "Manajemen Pembayaran";
-    if (location.pathname.startsWith("/admin/selection"))
-      return "Manajemen Seleksi";
-    if (location.pathname.startsWith("/admin/placement"))
-      return "Manajemen Penyaluran";
-    if (location.pathname.startsWith("/admin/financial-reports"))
-      return "Laporan Keuangan";
+  //   if (location.pathname.startsWith("/admin/payments"))
+  //     return "Manajemen Pembayaran";
+  //   if (location.pathname.startsWith("/admin/selection"))
+  //     return "Manajemen Seleksi";
+  //   if (location.pathname.startsWith("/admin/placement"))
+  //     return "Manajemen Penyaluran";
+  //   if (location.pathname.startsWith("/admin/financial-reports"))
+  //     return "Laporan Keuangan";
 
-    return "Admin Dashboard";
-  };
+  //   return "Admin Dashboard";
+  // };
 
-  const getPageDescription = () => {
-    if (location.pathname === "/admin") {
-      return "Overview dan statistik sistem";
-    }
-    return "Kelola data dan proses administrasi";
-  };
+  // const getPageDescription = () => {
+  //   if (location.pathname === "/admin") {
+  //     return "Overview dan statistik sistem";
+  //   }
+  //   return "Kelola data dan proses administrasi";
+  // };
 
   const toggleMobileSidebar = () => {
     setMobileSidebarOpen(!mobileSidebarOpen);
@@ -148,17 +162,20 @@ const AdminLayout = ({ children }) => {
               <li key={item.path} className="menu-item">
                 <Link
                   to={item.path}
-                  className={`menu-link text-white d-block p-3 text-decoration-none ${
+                  className={`menu-link d-flex align-items-center text-white p-3 text-decoration-none ${
                     isActive(item) ? "active" : ""
                   }`}
                   title={sidebarCollapsed ? item.label : ""}
                 >
                   <i
                     className={`bi ${item.icon} ${
-                      sidebarCollapsed ? "fs-5" : "me-3"
+                      sidebarCollapsed ? "fs-5 mx-auto" : "me-3"
                     }`}
+                    style={{ width: "20px", textAlign: "center" }}
                   ></i>
-                  {!sidebarCollapsed && <span>{item.label}</span>}
+                  {!sidebarCollapsed && (
+                    <span className="flex-grow-1 text-start">{item.label}</span>
+                  )}
                 </Link>
               </li>
             ))}
@@ -211,12 +228,15 @@ const AdminLayout = ({ children }) => {
               <li key={item.path} className="menu-item">
                 <Link
                   to={item.path}
-                  className={`menu-link text-white d-block p-3 text-decoration-none ${
+                  className={`menu-link d-flex align-items-center text-white p-3 text-decoration-none ${
                     isActive(item) ? "active" : ""
                   }`}
                   onClick={handleMenuClick}
                 >
-                  <i className={`bi ${item.icon} me-3`}></i>
+                  <i
+                    className={`bi ${item.icon} me-3`}
+                    style={{ width: "20px", textAlign: "center" }}
+                  ></i>
                   <span>{item.label}</span>
                 </Link>
               </li>

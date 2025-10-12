@@ -15,7 +15,7 @@ router.get("/financial/summary", async (req, res) => {
         COUNT(*) as total_transactions,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_paid ELSE 0 END), 0) as total_revenue,
         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) as total_pending,
-        COALESCE(SUM(CASE WHEN status = 'down_payment' THEN (amount - amount_paid) ELSE 0 END), 0) as total_outstanding,
+        COALESCE(SUM(CASE WHEN status IN ('installment_1', 'installment_2', 'installment_3', 'installment_4', 'installment_5', 'installment_6') THEN (amount - amount_paid) ELSE 0 END), 0) as total_outstanding,
         COALESCE(SUM(CASE WHEN status = 'overdue' THEN amount ELSE 0 END), 0) as total_overdue,
         COALESCE(SUM(amount), 0) as total_amount,
         COALESCE(SUM(amount_paid), 0) as total_amount_paid
@@ -83,7 +83,7 @@ router.get("/financial/summary", async (req, res) => {
   }
 });
 
-// Get detailed financial report
+// Get detailed financial report - PERBAIKAN: hapus p.cost
 router.get("/financial/detailed", async (req, res) => {
   try {
     const { start_date, end_date, program, status, search } = req.query;
@@ -96,7 +96,6 @@ router.get("/financial/detailed", async (req, res) => {
         u.email,
         u.phone,
         p.name as program_name,
-        p.cost as program_cost,
         p.training_cost as program_training_cost,
         p.departure_cost as program_departure_cost,
         verifier.full_name as verified_by_name
@@ -153,7 +152,7 @@ router.get("/financial/detailed", async (req, res) => {
   }
 });
 
-// Export to Excel
+// Export to Excel - PERBAIKAN: hapus p.cost
 router.get("/financial/export/excel", async (req, res) => {
   try {
     const { start_date, end_date, program, status } = req.query;
@@ -173,7 +172,6 @@ router.get("/financial/export/excel", async (req, res) => {
         u.email,
         u.phone,
         p.name as program_name,
-        p.cost as program_cost,
         p.training_cost as program_training_cost,
         p.departure_cost as program_departure_cost
       FROM payments py
@@ -291,21 +289,33 @@ router.get("/financial/export/pdf", async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
 
-    // Get summary data
-    const [summary] = await db.promise().query(`
+    // Build query dengan parameterized queries untuk menghindari SQL injection
+    let summaryQuery = `
       SELECT 
         COUNT(*) as total_transactions,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_paid ELSE 0 END), 0) as total_revenue,
         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) as total_pending,
-        COALESCE(SUM(CASE WHEN status = 'down_payment' THEN (amount - amount_paid) ELSE 0 END), 0) as total_outstanding
+        COALESCE(SUM(CASE WHEN status IN ('installment_1', 'installment_2', 'installment_3', 'installment_4', 'installment_5', 'installment_6') THEN (amount - amount_paid) ELSE 0 END), 0) as total_outstanding,
+        COALESCE(SUM(CASE WHEN status = 'overdue' THEN amount ELSE 0 END), 0) as total_overdue
       FROM payments
       WHERE 1=1
-      ${start_date ? " AND DATE(created_at) >= '" + start_date + "'" : ""}
-      ${end_date ? " AND DATE(created_at) <= '" + end_date + "'" : ""}
-    `);
+    `;
+    const summaryParams = [];
 
-    // Get recent payments
-    const [recentPayments] = await db.promise().query(`
+    if (start_date) {
+      summaryQuery += " AND DATE(created_at) >= ?";
+      summaryParams.push(start_date);
+    }
+
+    if (end_date) {
+      summaryQuery += " AND DATE(created_at) <= ?";
+      summaryParams.push(end_date);
+    }
+
+    const [summary] = await db.promise().query(summaryQuery, summaryParams);
+
+    // Get recent payments dengan filter yang sama
+    let recentPaymentsQuery = `
       SELECT 
         py.*,
         u.full_name,
@@ -314,9 +324,25 @@ router.get("/financial/export/pdf", async (req, res) => {
       LEFT JOIN registrations r ON py.registration_id = r.id
       LEFT JOIN users u ON r.user_id = u.id
       LEFT JOIN programs p ON r.program_id = p.id
-      ORDER BY py.created_at DESC
-      LIMIT 10
-    `);
+      WHERE 1=1
+    `;
+    const recentParams = [];
+
+    if (start_date) {
+      recentPaymentsQuery += " AND DATE(py.created_at) >= ?";
+      recentParams.push(start_date);
+    }
+
+    if (end_date) {
+      recentPaymentsQuery += " AND DATE(py.created_at) <= ?";
+      recentParams.push(end_date);
+    }
+
+    recentPaymentsQuery += " ORDER BY py.created_at DESC LIMIT 10";
+
+    const [recentPayments] = await db
+      .promise()
+      .query(recentPaymentsQuery, recentParams);
 
     // Create PDF document
     const doc = new PDFDocument();
@@ -339,29 +365,39 @@ router.get("/financial/export/pdf", async (req, res) => {
       .fontSize(12)
       .text(`Tanggal: ${new Date().toLocaleDateString("id-ID")}`, 100, 130);
 
-    // Add summary
+    // Add summary dengan data yang sudah diperbaiki
     doc.text("Ringkasan Keuangan:", 100, 170);
     doc.text(
-      `Total Pendapatan: Rp ${summary[0].total_revenue.toLocaleString(
-        "id-ID"
-      )}`,
+      `Total Pendapatan: Rp ${
+        summary[0].total_revenue?.toLocaleString("id-ID") || 0
+      }`,
       120,
       190
     );
     doc.text(
-      `Pending: Rp ${summary[0].total_pending.toLocaleString("id-ID")}`,
+      `Pending: Rp ${summary[0].total_pending?.toLocaleString("id-ID") || 0}`,
       120,
       210
     );
     doc.text(
-      `Outstanding: Rp ${summary[0].total_outstanding.toLocaleString("id-ID")}`,
+      `Outstanding (Cicilan): Rp ${
+        summary[0].total_outstanding?.toLocaleString("id-ID") || 0
+      }`,
       120,
       230
     );
 
+    if (summary[0].total_overdue > 0) {
+      doc.text(
+        `Overdue: Rp ${summary[0].total_overdue?.toLocaleString("id-ID") || 0}`,
+        120,
+        250
+      );
+    }
+
     // Add recent transactions
-    doc.text("Transaksi Terbaru:", 100, 270);
-    let yPosition = 290;
+    doc.text("Transaksi Terbaru:", 100, 290);
+    let yPosition = 310;
 
     recentPayments.forEach((payment, index) => {
       if (yPosition > 700) {
@@ -370,11 +406,9 @@ router.get("/financial/export/pdf", async (req, res) => {
       }
 
       doc.text(
-        `${index + 1}. ${payment.full_name} - ${
-          payment.program_name
-        } - Rp ${payment.amount_paid.toLocaleString("id-ID")} (${
-          payment.status
-        })`,
+        `${index + 1}. ${payment.full_name} - ${payment.program_name} - Rp ${(
+          payment.amount_paid || 0
+        ).toLocaleString("id-ID")} (${payment.status})`,
         120,
         yPosition
       );

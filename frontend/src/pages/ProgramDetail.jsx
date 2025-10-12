@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
+import helpers from "../utils/helpers";
 
 const ProgramDetail = () => {
   const { id } = useParams();
@@ -28,18 +29,18 @@ const ProgramDetail = () => {
     }
   };
 
-  const formatRupiah = (value) => {
-    if (value === null || value === undefined || value === "") return "-";
-    const normalized =
-      typeof value === "number"
-        ? value
-        : parseFloat(String(value).replace(/,/g, ""));
-    if (isNaN(normalized)) return "-";
-    return normalized.toLocaleString("id-ID", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-  };
+  // const formatRupiah = (value) => {
+  //   if (value === null || value === undefined || value === "") return "-";
+  //   const normalized =
+  //     typeof value === "number"
+  //       ? value
+  //       : parseFloat(String(value).replace(/,/g, ""));
+  //   if (isNaN(normalized)) return "-";
+  //   return normalized.toLocaleString("id-ID", {
+  //     minimumFractionDigits: 0,
+  //     maximumFractionDigits: 0,
+  //   });
+  // };
 
   // Fungsi helper untuk handle data JSON - TIDAK PERLU PARSE LAGI
   const getCurriculum = () => {
@@ -374,7 +375,7 @@ const ProgramDetail = () => {
                     Biaya Pelatihan
                   </h5>
                   <h4 className="mb-0 fw-bold mt-2">
-                    Rp {formatRupiah(program.training_cost)}
+                    {helpers.formatCurrency(program.training_cost)}
                   </h4>
                 </div>
                 <div className="card-body">
@@ -402,7 +403,7 @@ const ProgramDetail = () => {
                     Biaya Keberangkatan
                   </h5>
                   <h4 className="mb-0 fw-bold mt-2">
-                    Rp {formatRupiah(program.departure_cost)}
+                    {helpers.formatCurrency(program.departure_cost)}
                   </h4>
                 </div>
                 <div className="card-body">

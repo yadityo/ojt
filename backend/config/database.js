@@ -8,7 +8,7 @@ const db = mysql.createPool({
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "intern_registration",
+  database: process.env.DB_NAME || "intern_registration_test",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -17,16 +17,10 @@ const db = mysql.createPool({
 });
 
 // Helper functions
-export const generateRegistrationCode = async (programId) => {
-  const [program] = await db
-    .promise()
-    .query("SELECT name FROM programs WHERE id = ?", [programId]);
-
-  const programCode = program[0]?.name.substring(0, 3).toUpperCase() || "REG";
+export const generateRegistrationCode = async () => {
   const timestamp = Date.now().toString().slice(-6);
   const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-
-  return `${programCode}-${timestamp}-${random}`;
+  return `REG-${timestamp}-${random}`;
 };
 
 export const generateInvoiceNumber = async () => {
@@ -34,7 +28,6 @@ export const generateInvoiceNumber = async () => {
   const month = String(new Date().getMonth() + 1).padStart(2, "0");
   const timestamp = Date.now().toString().slice(-6);
   const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-
   return `INV/${year}/${month}/${timestamp}${random}`;
 };
 
@@ -43,7 +36,6 @@ export const generateReceiptNumber = async () => {
   const month = String(new Date().getMonth() + 1).padStart(2, "0");
   const timestamp = Date.now().toString().slice(-6);
   const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-
   return `RCP/${year}/${month}/${timestamp}${random}`;
 };
 

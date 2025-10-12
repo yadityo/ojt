@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
+import helpers from "../utils/helpers";
 
 const UserDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
@@ -36,55 +37,37 @@ const UserDashboard = () => {
     }
   };
 
-  // Helper functions untuk formatting
-  const formatDate = (dateString) => {
-    if (!dateString) return "-";
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
-    } catch {
-      return "-";
-    }
-  };
-
   const getStatusBadge = (status) => {
     const statusConfig = {
-      // Payment Status
+      // Status pembayaran - FIXED: hapus down_payment, tambah installment
       pending: { class: "warning", text: "Menunggu" },
-      down_payment: { class: "info", text: "DP" },
+      installment_1: { class: "info", text: "Cicilan 1" },
+      installment_2: { class: "info", text: "Cicilan 2" },
+      installment_3: { class: "info", text: "Cicilan 3" },
+      installment_4: { class: "info", text: "Cicilan 4" },
+      installment_5: { class: "info", text: "Cicilan 5" },
+      installment_6: { class: "info", text: "Cicilan 6" },
       paid: { class: "success", text: "Lunas" },
       overdue: { class: "danger", text: "Jatuh Tempo" },
       cancelled: { class: "secondary", text: "Dibatalkan" },
 
-      // Selection Status
+      // Status seleksi
       menunggu: { class: "warning", text: "Menunggu" },
-      lolos_tahap_1: { class: "info", text: "Lolos Tahap 1" },
-      lolos_tahap_2: { class: "primary", text: "Lolos Tahap 2" },
-      tidak_lolos: { class: "danger", text: "Tidak Lolos" },
       lolos: { class: "success", text: "Lolos" },
+      tidak_lolos: { class: "danger", text: "Tidak Lolos" },
 
-      // Placement Status
+      // Status penempatan
       proses: { class: "warning", text: "Proses" },
       ditempatkan: { class: "success", text: "Ditempatkan" },
-      gagal: { class: "danger", text: "Gagal" },
-
-      // Registration Status - HAPUS 'pending' YANG DUPLIKAT
-      accepted: { class: "success", text: "Diterima" },
-      rejected: { class: "danger", text: "Ditolak" },
-      under_review: { class: "warning", text: "Review" },
-      waiting_list: { class: "info", text: "Waiting List" },
-      // 'pending' sudah didefinisikan di Payment Status, jadi hapus yang di sini
     };
 
     const config = statusConfig[status] || {
       class: "secondary",
       text: status || "-",
     };
-    return `<span class="badge bg-${config.class}">${config.text}</span>`;
+
+    // Return JSX langsung, bukan string dengan HTML
+    return <span className={`badge bg-${config.class}`}>{config.text}</span>;
   };
 
   const getCardStatusData = (registrations) => {
@@ -94,22 +77,42 @@ const UserDashboard = () => {
         selectionStatus: { status: "-" },
         placementStatus: { status: "-" },
         programName: "-",
+        companyName: "-",
       };
     }
 
     const latestRegistration = registrations[0];
 
+    // Fungsi untuk menentukan class status pembayaran
+    const getPaymentStatusClass = (paymentStatus) => {
+      if (paymentStatus === "paid") return "success";
+      if (paymentStatus && paymentStatus.startsWith("installment_"))
+        return "info";
+      if (paymentStatus === "overdue") return "danger";
+      if (paymentStatus === "pending") return "warning";
+      if (paymentStatus === "cancelled") return "secondary";
+      return "secondary";
+    };
+
+    // Fungsi untuk menentukan teks status pembayaran
+    const getPaymentStatusText = (paymentStatus) => {
+      if (paymentStatus === "paid") return "Lunas";
+      if (paymentStatus === "installment_1") return "Cicilan 1";
+      if (paymentStatus === "installment_2") return "Cicilan 2";
+      if (paymentStatus === "installment_3") return "Cicilan 3";
+      if (paymentStatus === "installment_4") return "Cicilan 4";
+      if (paymentStatus === "installment_5") return "Cicilan 5";
+      if (paymentStatus === "installment_6") return "Cicilan 6";
+      if (paymentStatus === "overdue") return "Jatuh Tempo";
+      if (paymentStatus === "pending") return "Menunggu";
+      if (paymentStatus === "cancelled") return "Dibatalkan";
+      return paymentStatus || "-";
+    };
+
     return {
       paymentStatus: {
-        status: latestRegistration.payment_status || "-",
-        class:
-          latestRegistration.payment_status === "paid"
-            ? "success"
-            : latestRegistration.payment_status === "down_payment"
-            ? "info"
-            : latestRegistration.payment_status === "overdue"
-            ? "danger"
-            : "secondary",
+        status: getPaymentStatusText(latestRegistration.payment_status),
+        class: getPaymentStatusClass(latestRegistration.payment_status),
       },
       selectionStatus: {
         status: latestRegistration.selection_status || "-",
@@ -125,17 +128,11 @@ const UserDashboard = () => {
         class:
           latestRegistration.placement_status === "ditempatkan"
             ? "success"
-            : latestRegistration.placement_status === "gagal"
-            ? "danger"
             : "secondary",
       },
       programName: latestRegistration.program_name || "-",
+      companyName: latestRegistration.company_name || "-",
     };
-  };
-
-  const formatCurrency = (amount) => {
-    if (!amount) return "-";
-    return `Rp ${amount.toLocaleString("id-ID")}`;
   };
 
   if (loading) {
@@ -204,85 +201,34 @@ const UserDashboard = () => {
 
       {/* Statistics Cards - Dinamis */}
       <div className="row mb-4">
-        <div className="col-md-3 mb-3">
-          <div className={`card bg-primary text-white h-100`}>
-            <div className="card-body">
-              <div className="text-center">
-                <h3 className="card-title fw-bold">Status Pembayaran</h3>
-                <div className="fs-5">
-                  {cardData.paymentStatus.status === "paid"
-                    ? "Lunas"
-                    : cardData.paymentStatus.status === "down_payment"
-                    ? "DP"
-                    : cardData.paymentStatus.status === "pending"
-                    ? "Menunggu"
-                    : cardData.paymentStatus.status}
-                </div>
-                {/* {registrations.length > 0 &&
-                  registrations[0].amount_paid > 0 && (
-                    <small>
-                      Terbayar: {formatCurrency(registrations[0].amount_paid)}
-                    </small>
-                  )} */}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-md-3 mb-3">
+        <div className="col-md-4 mb-3">
           <div className={`card bg-primary text-white h-100`}>
             <div className="card-body">
               <div className="text-center">
                 <h3 className="card-title fw-bold">Status Seleksi</h3>
-                <div className="fs-5">
-                  {cardData.selectionStatus.status === "lolos"
-                    ? "Lolos"
-                    : cardData.selectionStatus.status === "menunggu"
-                    ? "Menunggu"
-                    : cardData.selectionStatus.status === "tidak_lolos"
-                    ? "Tidak Lolos"
-                    : cardData.selectionStatus.status}
-                </div>
-                {/* {registrations.length > 0 && registrations[0].final_score && (
-                  <small>Nilai: {registrations[0].final_score}</small>
-                )} */}
+                <div className="fs-5">{cardData.selectionStatus.status}</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="col-md-3 mb-3">
+        <div className="col-md-4 mb-3">
           <div className={`card bg-primary text-white h-100`}>
             <div className="card-body">
               <div className="text-center">
                 <h3 className="card-title fw-bold">Penempatan Kerja</h3>
-                <div className="fs-5">
-                  {cardData.placementStatus.status === "proses"
-                    ? "Proses"
-                    : cardData.placementStatus.status === "ditempatkan"
-                    ? "Ditempatkan"
-                    : cardData.placementStatus.status === "gagal"
-                    ? "Gagal"
-                    : cardData.placementStatus.status}
-                </div>
-                {/* {registrations.length > 0 && registrations[0].company_name && (
-                  <small>{registrations[0].company_name}</small>
-                )} */}
+                <div className="fs-5">{cardData.placementStatus.status}</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="col-md-3 mb-3">
+        <div className="col-md-4 mb-3">
           <div className="card bg-primary text-white h-100">
             <div className="card-body">
               <div className="text-center">
                 <h3 className="card-title fw-bold">Program Saya</h3>
                 <div className="fs-5">{cardData.programName}</div>
-                {/* {registrations.length > 0 &&
-                  registrations[0].program_duration && (
-                    <small>Durasi: {registrations[0].program_duration}</small>
-                  )} */}
               </div>
             </div>
           </div>
@@ -299,91 +245,37 @@ const UserDashboard = () => {
             <div className="card-body">
               {registrations.length > 0 ? (
                 <div className="table-responsive">
-                  <table className="table table-hover align-middle">
-                    <thead className="table-light">
+                  <table className="table table-hover text-center">
+                    <thead className="table-light align-middle">
                       <tr>
                         <th>Nama Program</th>
                         <th>Kode Pendaftaran</th>
                         <th>Tanggal Pendaftaran</th>
-                        <th>Status Pembayaran</th>
                         <th>Status Seleksi</th>
                         <th>Status Penyaluran</th>
                         <th>Batas Pembayaran</th>
                         <th>Nama Perusahaan</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {registrations.map((registration) => (
-                        <tr key={registration.id}>
+                    <tbody className="align-middle">
+                      {registrations.map((registration, index) => (
+                        <tr
+                          key={`${registration.id}-${index}-${registration.registration_code}`}
+                        >
                           <td>
                             <strong>{registration.program_name || "-"}</strong>
                           </td>
                           <td>
                             <code>{registration.registration_code || "-"}</code>
                           </td>
-                          <td>{formatDate(registration.registration_date)}</td>
                           <td>
-                            <span
-                              className={`badge bg-${
-                                getStatusBadge(registration.payment_status)
-                                  .split("bg-")[1]
-                                  .split('"')[0]
-                              }`}
-                              dangerouslySetInnerHTML={{
-                                __html: getStatusBadge(
-                                  registration.payment_status
-                                ),
-                              }}
-                            />
-                            {registration.amount_paid > 0 && (
-                              <div>
-                                <small className="text-muted">
-                                  {formatCurrency(registration.amount_paid)}
-                                </small>
-                              </div>
-                            )}
+                            {helpers.formatDate(registration.registration_date)}
                           </td>
                           <td>
-                            <span
-                              className={`badge bg-${
-                                getStatusBadge(registration.selection_status)
-                                  .split("bg-")[1]
-                                  .split('"')[0]
-                              }`}
-                              dangerouslySetInnerHTML={{
-                                __html: getStatusBadge(
-                                  registration.selection_status
-                                ),
-                              }}
-                            />
-                            {registration.final_score && (
-                              <div>
-                                <small className="text-muted">
-                                  Nilai: {registration.final_score}
-                                </small>
-                              </div>
-                            )}
+                            {getStatusBadge(registration.selection_status)}
                           </td>
                           <td>
-                            <span
-                              className={`badge bg-${
-                                getStatusBadge(registration.placement_status)
-                                  .split("bg-")[1]
-                                  .split('"')[0]
-                              }`}
-                              dangerouslySetInnerHTML={{
-                                __html: getStatusBadge(
-                                  registration.placement_status
-                                ),
-                              }}
-                            />
-                            {registration.company_name && (
-                              <div>
-                                <small className="text-muted">
-                                  {registration.company_name}
-                                </small>
-                              </div>
-                            )}
+                            {getStatusBadge(registration.placement_status)}
                           </td>
                           <td>
                             {registration.due_date ? (
@@ -394,13 +286,23 @@ const UserDashboard = () => {
                                     : "text-muted"
                                 }
                               >
-                                {formatDate(registration.due_date)}
+                                {helpers.formatDate(registration.due_date)}
                               </span>
                             ) : (
                               "-"
                             )}
                           </td>
-                          <td>-</td>
+                          <td>
+                            {registration.company_name ? (
+                              <span className="badge bg-success">
+                                {registration.company_name}
+                              </span>
+                            ) : (
+                              <span className="text-muted">
+                                Belum ditentukan
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -415,7 +317,7 @@ const UserDashboard = () => {
                   <p className="text-muted mb-4">
                     Anda belum terdaftar dalam program magang.
                   </p>
-                  <Link to="/programs" className="btn btn-primary">
+                  <Link to="/registration" className="btn btn-primary">
                     Daftar Program Magang
                   </Link>
                 </div>
@@ -435,7 +337,9 @@ const UserDashboard = () => {
                 <li>Status akan diperbarui secara real-time oleh admin</li>
                 <li>Untuk pertanyaan mengenai pembayaran, hubungi admin</li>
                 <li>Proses seleksi membutuhkan waktu 1-2 minggu</li>
-                <li>Pastikan data yang ditampilkan sudah sesuai</li>
+                <li>
+                  Nama perusahaan akan ditentukan setelah proses seleksi selesai
+                </li>
               </ul>
             </div>
           </div>

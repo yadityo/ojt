@@ -1,46 +1,84 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { saveAs } from "file-saver";
 
 const FinancialReports = () => {
-  const [reportData, setReportData] = useState(null);
-  const [detailedData, setDetailedData] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [detailedReports, setDetailedReports] = useState([]);
+  const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [error, setError] = useState("");
   const [filters, setFilters] = useState({
+    program: "all",
     start_date: "",
     end_date: "",
-    program: "all",
     status: "all",
     search: "",
   });
 
   useEffect(() => {
-    fetchReportData();
-    fetchDetailedData();
-  }, []);
+    fetchFinancialSummary();
+    fetchDetailedReports();
+    fetchPrograms();
+  }, [filters]);
 
-  const fetchReportData = async () => {
+  const fetchFinancialSummary = async () => {
     try {
-      const response = await axios.get("/api/reports/financial/summary", {
-        params: filters,
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key] !== "all" && filters[key] !== "") {
+          params.append(key, filters[key]);
+        }
       });
-      setReportData(response.data.data);
+
+      const response = await axios.get(
+        `/api/reports/financial/summary?${params}`
+      );
+      if (response.data.success) {
+        setSummary(response.data.data);
+      } else {
+        setError("Gagal memuat ringkasan keuangan");
+      }
     } catch (error) {
-      console.error("Error fetching report data:", error);
+      console.error("Error fetching financial summary:", error);
+      setError("Error loading financial summary");
     }
   };
 
-  const fetchDetailedData = async () => {
+  const fetchDetailedReports = async () => {
     try {
-      const response = await axios.get("/api/reports/financial/detailed", {
-        params: filters,
+      setLoading(true);
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key] !== "all" && filters[key] !== "") {
+          params.append(key, filters[key]);
+        }
       });
-      setDetailedData(response.data.data);
-      setLoading(false);
+
+      const response = await axios.get(
+        `/api/reports/financial/detailed?${params}`
+      );
+      if (response.data.success) {
+        setDetailedReports(response.data.data);
+      } else {
+        setError("Gagal memuat detail transaksi");
+      }
     } catch (error) {
-      console.error("Error fetching detailed data:", error);
+      console.error("Error fetching detailed reports:", error);
+      setError("Error loading detailed reports");
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPrograms = async () => {
+    try {
+      const response = await axios.get("/api/programs");
+      if (response.data.success) {
+        setPrograms(response.data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching programs:", error);
     }
   };
 
@@ -51,73 +89,143 @@ const FinancialReports = () => {
     }));
   };
 
-  const handleApplyFilters = () => {
-    setLoading(true);
-    fetchReportData();
-    fetchDetailedData();
-  };
-
-  const handleResetFilters = () => {
-    setFilters({
-      start_date: "",
-      end_date: "",
-      program: "all",
-      status: "all",
-      search: "",
-    });
-  };
-
-  const exportToExcel = async () => {
-    setExporting(true);
+  const handleExportExcel = async () => {
     try {
-      const response = await axios.get("/api/reports/financial/export/excel", {
-        params: filters,
-        responseType: "blob",
+      setExportLoading(true);
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key] !== "all" && filters[key] !== "") {
+          params.append(key, filters[key]);
+        }
       });
-      saveAs(
-        new Blob([response.data]),
-        `financial-report-${new Date().toISOString().split("T")[0]}.xlsx`
+
+      const response = await axios.get(
+        `/api/reports/financial/export/excel?${params}`,
+        {
+          responseType: "blob",
+        }
       );
+
+      // Create blob and download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `laporan-keuangan-${new Date().toISOString().split("T")[0]}.xlsx`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error exporting to Excel:", error);
       alert("Gagal mengekspor ke Excel");
+    } finally {
+      setExportLoading(false);
     }
-    setExporting(false);
   };
 
-  const exportToPDF = async () => {
-    setExporting(true);
+  const handleExportPDF = async () => {
     try {
-      const response = await axios.get("/api/reports/financial/export/pdf", {
-        params: filters,
-        responseType: "blob",
+      setExportLoading(true);
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key] !== "all" && filters[key] !== "") {
+          params.append(key, filters[key]);
+        }
       });
-      saveAs(
-        new Blob([response.data]),
-        `financial-report-${new Date().toISOString().split("T")[0]}.pdf`
+
+      const response = await axios.get(
+        `/api/reports/financial/export/pdf?${params}`,
+        {
+          responseType: "blob",
+        }
       );
+
+      // Create blob and download
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `laporan-keuangan-${new Date().toISOString().split("T")[0]}.pdf`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error exporting to PDF:", error);
       alert("Gagal mengekspor ke PDF");
+    } finally {
+      setExportLoading(false);
     }
-    setExporting(false);
+  };
+
+  const formatCurrency = (value) => {
+    if (!value && value !== 0) return "Rp 0";
+    const numValue = parseFloat(value);
+    return isNaN(numValue) ? "Rp 0" : `Rp ${numValue.toLocaleString("id-ID")}`;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "-";
+    try {
+      return new Date(dateString).toLocaleDateString("id-ID");
+    } catch (error) {
+      return "-";
+    }
   };
 
   const getStatusBadge = (status) => {
-    const variants = {
-      paid: "bg-success",
-      pending: "bg-warning",
-      down_payment: "bg-info",
-      overdue: "bg-danger",
+    const statusConfig = {
+      pending: { class: "bg-warning", text: "Menunggu" },
+      installment_1: { class: "bg-info", text: "Cicilan 1" },
+      installment_2: { class: "bg-info", text: "Cicilan 2" },
+      installment_3: { class: "bg-info", text: "Cicilan 3" },
+      installment_4: { class: "bg-info", text: "Cicilan 4" },
+      installment_5: { class: "bg-info", text: "Cicilan 5" },
+      installment_6: { class: "bg-info", text: "Cicilan 6" },
+      paid: { class: "bg-success", text: "Lunas" },
+      overdue: { class: "bg-danger", text: "Jatuh Tempo" },
+      cancelled: { class: "bg-secondary", text: "Dibatalkan" },
     };
-    return <span className={`badge ${variants[status]}`}>{status}</span>;
+    const config = statusConfig[status] || {
+      class: "bg-secondary",
+      text: status,
+    };
+    return <span className={`badge ${config.class}`}>{config.text}</span>;
   };
 
-  if (loading) {
+  const getPaymentMethodText = (method) => {
+    const methods = {
+      transfer: "Transfer Bank",
+      cash: "Tunai",
+      credit_card: "Kartu Kredit",
+    };
+    return methods[method] || method;
+  };
+
+  const getInstallmentText = (payment) => {
+    if (payment.status === "paid") return "Lunas";
+    if (payment.status === "pending") return "Menunggu Pembayaran";
+    if (payment.status.startsWith("installment_")) {
+      const installmentNum = payment.status.split("_")[1];
+      const totalAmount = parseFloat(payment.amount) || 0;
+      const paidAmount = parseFloat(payment.amount_paid) || 0;
+      const progress =
+        totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0;
+      return `Cicilan ${installmentNum} (${progress}%)`;
+    }
+    return payment.status;
+  };
+
+  if (loading && !summary) {
     return (
       <div className="container mt-4">
         <div className="d-flex justify-content-center">
-          <div className="spinner-border" role="status">
+          <div className="spinner-border text-primary" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
         </div>
@@ -136,39 +244,71 @@ const FinancialReports = () => {
         </div>
       </div>
 
+      {/* Alert Message */}
+      {error && (
+        <div
+          className="alert alert-warning alert-dismissible fade show"
+          role="alert"
+        >
+          {error}
+          <button
+            type="button"
+            className="btn-close"
+            onClick={() => setError("")}
+          ></button>
+        </div>
+      )}
+
+      {/* Summary Cards */}
+      {summary && (
+        <div className="row mb-4">
+          <div className="col-md-4 mb-3 mb-md-0">
+            <div className="card bg-primary text-white text-center h-100">
+              <div className="card-body">
+                <h4 className="card-title">Total Pemasukan Bersih</h4>
+                <p className="card-text h4 text-white">
+                  {formatCurrency(summary.summary?.total_revenue)}
+                </p>
+                <small className="text-white">
+                  {summary.summary?.total_transactions} transaksi
+                </small>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-4 mb-3 mb-md-0">
+            <div className="card bg-primary text-white text-center h-100">
+              <div className="card-body">
+                <h4 className="card-title">Pembayaran Belum Verifikasi</h4>
+                <p className="card-text h4">
+                  {formatCurrency(summary.summary?.total_pending)}
+                </p>
+                <small>Menunggu konfirmasi admin</small>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-4 mb-3 mb-md-0">
+            <div className="card bg-primary text-white text-center h-100">
+              <div className="card-body">
+                <h4 className="card-title">Estimasi Tunggakan</h4>
+                <p className="card-text h4 text-white">
+                  {formatCurrency(summary.summary?.total_outstanding)}
+                </p>
+                <small className="text-white">
+                  {formatCurrency(summary.summary?.total_overdue)} overdue
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filter Section */}
       <div className="card mb-4">
         <div className="card-header">
-          <h5 className="mb-0">Filter Laporan</h5>
+          <h5 className="mb-0">Filter & Pencarian</h5>
         </div>
         <div className="card-body">
-          <div className="row">
-            <div className="col-md-3">
-              <div className="mb-3">
-                <label className="form-label">Tanggal Mulai</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={filters.start_date}
-                  onChange={(e) =>
-                    handleFilterChange("start_date", e.target.value)
-                  }
-                />
-              </div>
-            </div>
-            <div className="col-md-3">
-              <div className="mb-3">
-                <label className="form-label">Tanggal Akhir</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={filters.end_date}
-                  onChange={(e) =>
-                    handleFilterChange("end_date", e.target.value)
-                  }
-                />
-              </div>
-            </div>
+          <div className="row g-3">
             <div className="col-md-2">
               <div className="mb-3">
                 <label className="form-label">Program</label>
@@ -180,9 +320,11 @@ const FinancialReports = () => {
                   }
                 >
                   <option value="all">Semua Program</option>
-                  <option value="1">Backend Developer</option>
-                  <option value="2">Frontend Developer</option>
-                  <option value="3">Data Analyst</option>
+                  {programs.map((program) => (
+                    <option key={program.id} value={program.id}>
+                      {program.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -195,94 +337,60 @@ const FinancialReports = () => {
                   onChange={(e) => handleFilterChange("status", e.target.value)}
                 >
                   <option value="all">Semua Status</option>
-                  <option value="paid">Lunas</option>
                   <option value="pending">Pending</option>
-                  <option value="down_payment">DP</option>
-                  <option value="overdue">Overdue</option>
+                  <option value="installment_1">Cicilan 1</option>
+                  <option value="installment_2">Cicilan 2</option>
+                  <option value="installment_3">Cicilan 3</option>
+                  <option value="paid">Lunas</option>
+                  <option value="overdue">Jatuh Tempo</option>
                 </select>
               </div>
             </div>
-            <div className="col-md-2 d-flex align-items-end">
-              <button className="btn btn-primary" onClick={handleApplyFilters}>
-                Terapkan Filter
-              </button>
-            </div>
-          </div>
-          <div className="row mt-2">
-            <div className="col-md-6">
+            <div className="col-md-2">
               <div className="mb-3">
-                <label className="form-label">Cari (Nama/Email/Invoice)</label>
+                <label className="form-label">Tanggal Mulai</label>
                 <input
-                  type="text"
+                  type="date"
                   className="form-control"
-                  placeholder="Cari..."
-                  value={filters.search}
-                  onChange={(e) => handleFilterChange("search", e.target.value)}
+                  value={filters.start_date}
+                  onChange={(e) =>
+                    handleFilterChange("start_date", e.target.value)
+                  }
                 />
               </div>
             </div>
-            <div className="col-md-6 d-flex align-items-end">
-              <button
-                className="btn btn-outline-secondary"
-                onClick={handleResetFilters}
-              >
-                Reset Filter
-              </button>
+            <div className="col-md-2">
+              <div className="mb-3">
+                <label className="form-label">Tanggal Akhir</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={filters.end_date}
+                  onChange={(e) =>
+                    handleFilterChange("end_date", e.target.value)
+                  }
+                />
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="row mb-4">
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title">Total Pendapatan</h5>
-              <p className="card-text h4 text-success">
-                Rp{" "}
-                {reportData?.summary?.total_revenue?.toLocaleString("id-ID") ||
-                  0}
-              </p>
-              <small className="text-muted">Pembayaran Lunas</small>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title">Outstanding</h5>
-              <p className="card-text h4 text-warning">
-                Rp{" "}
-                {reportData?.summary?.total_outstanding?.toLocaleString(
-                  "id-ID"
-                ) || 0}
-              </p>
-              <small className="text-muted">Belum Lunas</small>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title">Pending</h5>
-              <p className="card-text h4 text-info">
-                Rp{" "}
-                {reportData?.summary?.total_pending?.toLocaleString("id-ID") ||
-                  0}
-              </p>
-              <small className="text-muted">Menunggu Konfirmasi</small>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card text-center">
-            <div className="card-body">
-              <h5 className="card-title">Total Transaksi</h5>
-              <p className="card-text h4 text-primary">
-                {reportData?.summary?.total_transactions || 0}
-              </p>
-              <small className="text-muted">Semua Transaksi</small>
+            <div className="col-md-4">
+              <div className="mb-3">
+                <label className="form-label">&nbsp;</label>
+                <button
+                  className="btn btn-outline-primary w-100"
+                  onClick={() =>
+                    setFilters({
+                      program: "all",
+                      start_date: "",
+                      end_date: "",
+                      status: "all",
+                      search: "",
+                    })
+                  }
+                  title="Reset Filter"
+                >
+                  <i className="bi bi-arrow-clockwise"></i> Reset Filter
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -293,23 +401,45 @@ const FinancialReports = () => {
         <div className="col">
           <div className="card">
             <div className="card-body">
-              <h5>Ekspor Laporan</h5>
-              <button
-                className={`btn btn-success me-2 ${
-                  exporting ? "disabled" : ""
-                }`}
-                onClick={exportToExcel}
-                disabled={exporting}
-              >
-                {exporting ? "Mengekspor..." : "Export ke Excel"}
-              </button>
-              <button
-                className={`btn btn-danger ${exporting ? "disabled" : ""}`}
-                onClick={exportToPDF}
-                disabled={exporting}
-              >
-                {exporting ? "Mengekspor..." : "Export ke PDF"}
-              </button>
+              <div className="d-flex justify-content-between align-items-center">
+                <h5 className="mb-0">Ekspor Laporan</h5>
+                <div>
+                  <button
+                    className="btn btn-success me-2"
+                    onClick={handleExportExcel}
+                    disabled={exportLoading}
+                  >
+                    {exportLoading ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2"></span>
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-file-earmark-excel me-2"></i>
+                        Export ke Excel
+                      </>
+                    )}
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={handleExportPDF}
+                    disabled={exportLoading}
+                  >
+                    {exportLoading ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2"></span>
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-file-earmark-pdf me-2"></i>
+                        Export ke PDF
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -319,69 +449,145 @@ const FinancialReports = () => {
       <div className="row">
         <div className="col">
           <div className="card">
-            <div className="card-header">
-              <h5 className="mb-0">Detail Transaksi</h5>
+            <div className="card-header d-flex justify-content-between align-items-center">
+              <h5 className="mb-0">
+                Detail Transaksi ({detailedReports.length})
+              </h5>
+              <div>
+                <button
+                  className="btn btn-sm btn-outline-primary"
+                  onClick={fetchDetailedReports}
+                  disabled={loading}
+                >
+                  <i className="bi bi-arrow-clockwise me-2"></i>
+                  Refresh
+                </button>
+              </div>
             </div>
+
             <div className="card-body">
-              {detailedData.length === 0 ? (
-                <div className="alert alert-info">Tidak ada data transaksi</div>
+              {loading ? (
+                <div className="text-center py-4">
+                  <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                  </div>
+                  <p className="mt-2 text-muted">Memuat data transaksi...</p>
+                </div>
+              ) : detailedReports.length === 0 ? (
+                <div className="text-center py-5">
+                  <div className="display-1 text-muted mb-3">💸</div>
+                  <h5>Tidak ada data transaksi</h5>
+                  <p className="text-muted">
+                    Coba ubah filter atau tanggal untuk melihat data
+                  </p>
+                </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-striped table-bordered table-hover align-middle">
-                    <thead className="table-light">
+                  <table className="table table-striped table-bordered">
+                    <thead className="table-light align-middle">
                       <tr>
                         <th>#</th>
                         <th>Invoice</th>
-                        <th>Peserta</th>
+                        <th>Nama Peserta</th>
                         <th>Program</th>
-                        <th>Amount</th>
-                        <th>Paid</th>
                         <th>Status</th>
-                        <th>Payment Date</th>
-                        <th>Receipt</th>
+                        <th>Jenis Pembayaran</th>
+                        <th>Total Tagihan</th>
+                        <th>Sudah Dibayar</th>
+                        <th>Metode</th>
+                        <th>Tanggal</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {detailedData.map((payment, index) => (
-                        <tr key={payment.id}>
+                    <tbody className="align-middle">
+                      {detailedReports.map((report, index) => (
+                        <tr key={report.id}>
                           <td>{index + 1}</td>
                           <td>
-                            <small>{payment.invoice_number}</small>
+                            <div>
+                              <strong>{report.invoice_number}</strong>
+                              {report.receipt_number && (
+                                <div>
+                                  <small className="text-success">
+                                    Kwitansi: {report.receipt_number}
+                                  </small>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td>
                             <div>
-                              <strong>{payment.full_name}</strong>
-                              <br />
-                              <small className="text-muted">
-                                {payment.email}
-                              </small>
+                              <strong>{report.full_name}</strong>
+                              <div>
+                                <small className="text-muted">
+                                  {report.email}
+                                </small>
+                              </div>
                             </div>
                           </td>
-                          <td>{payment.program_name}</td>
-                          <td>Rp {payment.amount?.toLocaleString("id-ID")}</td>
-                          <td>
-                            Rp {payment.amount_paid?.toLocaleString("id-ID")}
+                          <td>{report.program_name}</td>
+                          <td>{getStatusBadge(report.status)}</td>
+                          <td>{getInstallmentText(report)}</td>
+                          <td className="fw-bold">
+                            {formatCurrency(report.amount)}
                           </td>
-                          <td>{getStatusBadge(payment.status)}</td>
-                          <td>
-                            {payment.payment_date
-                              ? new Date(
-                                  payment.payment_date
-                                ).toLocaleDateString("id-ID")
-                              : "-"}
+                          <td
+                            className={
+                              parseFloat(report.amount_paid || 0) >=
+                              parseFloat(report.amount || 0)
+                                ? "text-success fw-bold"
+                                : "text-warning"
+                            }
+                          >
+                            {formatCurrency(report.amount_paid)}
                           </td>
                           <td>
-                            {payment.receipt_number ? (
-                              <span className="badge bg-success">
-                                {payment.receipt_number}
+                            {report.payment_method && (
+                              <span className="badge bg-light text-dark">
+                                {getPaymentMethodText(report.payment_method)}
                               </span>
-                            ) : (
-                              <span className="badge bg-secondary">-</span>
+                            )}
+                          </td>
+                          <td>
+                            <div className="small">
+                              {formatDate(
+                                report.payment_date || report.created_at
+                              )}
+                            </div>
+                            {report.due_date && (
+                              <div className="small text-muted">
+                                Jatuh tempo: {formatDate(report.due_date)}
+                              </div>
                             )}
                           </td>
                         </tr>
                       ))}
                     </tbody>
+                    {summary && (
+                      <tfoot className="table-light">
+                        <tr>
+                          <td colSpan="6" className="text-end fw-bold">
+                            TOTAL:
+                          </td>
+                          <td className="fw-bold">
+                            {formatCurrency(summary.summary?.total_amount)}
+                          </td>
+                          <td className="fw-bold">
+                            {formatCurrency(summary.summary?.total_amount_paid)}
+                          </td>
+                          <td colSpan="2">
+                            <small>
+                              Sisa:{" "}
+                              {formatCurrency(
+                                parseFloat(summary.summary?.total_amount || 0) -
+                                  parseFloat(
+                                    summary.summary?.total_amount_paid || 0
+                                  )
+                              )}
+                            </small>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               )}
@@ -389,6 +595,76 @@ const FinancialReports = () => {
           </div>
         </div>
       </div>
+
+      {/* Status Distribution */}
+      {summary && summary.statusDistribution && (
+        <div className="row mt-4">
+          <div className="col-md-6">
+            <div className="card">
+              <div className="card-header">
+                <h6 className="mb-0">Distribusi Status Pembayaran</h6>
+              </div>
+              <div className="card-body">
+                <div className="table-responsive">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Jumlah</th>
+                        <th>Total Amount</th>
+                        <th>Total Paid</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.statusDistribution.map((item) => (
+                        <tr key={item.status}>
+                          <td>{getStatusBadge(item.status)}</td>
+                          <td>{item.count}</td>
+                          <td>{formatCurrency(item.total_amount)}</td>
+                          <td>{formatCurrency(item.total_paid)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-6">
+            <div className="card">
+              <div className="card-header">
+                <h6 className="mb-0">Trend Bulanan</h6>
+              </div>
+              <div className="card-body">
+                {summary.monthlyTrend && summary.monthlyTrend.length > 0 ? (
+                  <div className="table-responsive">
+                    <table className="table table-sm">
+                      <thead>
+                        <tr>
+                          <th>Bulan</th>
+                          <th>Transaksi</th>
+                          <th>Pendapatan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.monthlyTrend.map((item) => (
+                          <tr key={item.month}>
+                            <td>{item.month}</td>
+                            <td>{item.transaction_count}</td>
+                            <td>{formatCurrency(item.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-muted text-center">Tidak ada data trend</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

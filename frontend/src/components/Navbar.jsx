@@ -41,9 +41,9 @@ const Navbar = () => {
         {/* Logo di Kiri */}
         <Link className="navbar-brand fw-bold d-flex align-items-center" to="/">
           <img
-            src="/images/logo.png"
+            src="/images/logo/fitalenta_2024.png"
             alt="FITALENTA Logo"
-            height="40"
+            height="50"
             className="me-2"
             onError={(e) => {
               e.target.style.display = "none";

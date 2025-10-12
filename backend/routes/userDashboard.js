@@ -32,21 +32,16 @@ router.get("/:userId", async (req, res) => {
         r.*,
         p.name as program_name,
         p.description as program_description,
-        p.cost as program_cost,
         p.training_cost as program_training_cost,
         p.departure_cost as program_departure_cost,
         p.duration as program_duration,
         p.schedule as program_schedule,
         ss.status as selection_status,
-        ss.test_score,
-        ss.interview_score,
-        ss.final_score,
         ss.notes as selection_notes,
         ps.status as placement_status,
         ps.company_name,
-        ps.position,
-        ps.department,
         ps.placement_date,
+        ps.notes as placement_notes,
         py.status as payment_status,
         py.amount,
         py.amount_paid,
@@ -65,13 +60,13 @@ router.get("/:userId", async (req, res) => {
       [userId]
     );
 
-    // Calculate statistics
+    // Calculate statistics berdasarkan 3 status utama
     const totalRegistrations = registrations.length;
     const pendingPayments = registrations.filter(
       (r) => r.payment_status === "pending"
     ).length;
-    const acceptedRegistrations = registrations.filter(
-      (r) => r.status === "accepted"
+    const passedSelections = registrations.filter(
+      (r) => r.selection_status === "lolos"
     ).length;
 
     res.json({
@@ -82,7 +77,7 @@ router.get("/:userId", async (req, res) => {
         statistics: {
           totalRegistrations,
           pendingPayments,
-          acceptedRegistrations,
+          passedSelections,
         },
       },
     });
@@ -105,25 +100,17 @@ router.get("/registration/:registrationId", async (req, res) => {
         r.*,
         p.name as program_name,
         p.description as program_description,
-        p.cost as program_cost,
         p.training_cost as program_training_cost,
         p.departure_cost as program_departure_cost,
         p.duration as program_duration,
         p.schedule as program_schedule,
         p.contact_info as program_contact,
         ss.status as selection_status,
-        ss.test_score,
-        ss.interview_score,
-        ss.final_score,
         ss.notes as selection_notes,
         ss.evaluated_at as selection_evaluated_at,
         ps.status as placement_status,
         ps.company_name,
-        ps.position,
-        ps.department,
         ps.placement_date,
-        ps.supervisor_name,
-        ps.supervisor_contact,
         ps.notes as placement_notes,
         py.status as payment_status,
         py.amount,

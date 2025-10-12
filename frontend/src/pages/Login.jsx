@@ -137,9 +137,11 @@ const Login = () => {
                 <div className="alert alert-info">
                   <strong>Demo Credentials:</strong>
                   <br />
-                  Admin: admin@company.com / admin123
+                  Admin: admin@gmail.com / admin
                   <br />
-                  User: user@example.com / user123
+                  User 1: user1@gmail.com / user1
+                  <br />
+                  User 2: user2@gmail.com / user2
                 </div>
               </div>
             </div>
