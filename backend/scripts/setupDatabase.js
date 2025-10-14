@@ -15,7 +15,7 @@ const connection = mysql.createConnection({
 });
 
 // Read SQL schema file
-const schemaPath = path.join(__dirname, "schema.sql"); // Sesuaikan path ke file schema Anda
+const schemaPath = path.join(__dirname, "../../database/schema.sql"); // Sesuaikan path ke file schema.sql
 const schema = fs.readFileSync(schemaPath, "utf8");
 
 console.log("🚀 Setting up database...");
