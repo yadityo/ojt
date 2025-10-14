@@ -39,7 +39,6 @@ const UserDashboard = () => {
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      // Status pembayaran - FIXED: hapus down_payment, tambah installment
       pending: { class: "warning", text: "Menunggu" },
       installment_1: { class: "info", text: "Cicilan 1" },
       installment_2: { class: "info", text: "Cicilan 2" },

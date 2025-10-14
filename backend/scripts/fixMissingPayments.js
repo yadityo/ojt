@@ -4,7 +4,6 @@ const fixMissingPayments = async () => {
   try {
     console.log("🔧 Checking for registrations without payments...");
 
-    // PERBAIKAN: ganti p.cost dengan p.training_cost
     const [missingPayments] = await db.promise().query(`
       SELECT r.*, p.training_cost, p.name as program_name 
       FROM registrations r

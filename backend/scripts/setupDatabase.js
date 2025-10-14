@@ -15,7 +15,7 @@ const connection = mysql.createConnection({
 });
 
 // Read SQL schema file
-const schemaPath = path.join(__dirname, "../../database/schema_normalized.sql");
+const schemaPath = path.join(__dirname, "schema.sql"); // Sesuaikan path ke file schema Anda
 const schema = fs.readFileSync(schemaPath, "utf8");
 
 console.log("🚀 Setting up database...");
@@ -30,7 +30,7 @@ connection.connect((err) => {
 
   // Create database
   connection.query(
-    "CREATE DATABASE IF NOT EXISTS intern_registration",
+    "CREATE DATABASE IF NOT EXISTS intern_registration_test",
     (err) => {
       if (err) {
         console.error("❌ Error creating database:", err);
@@ -41,14 +41,14 @@ connection.connect((err) => {
       console.log("✅ Database created or already exists");
 
       // Use the database
-      connection.query("USE intern_registration", (err) => {
+      connection.query("USE intern_registration_test", (err) => {
         if (err) {
           console.error("❌ Error using database:", err);
           connection.end();
           return;
         }
 
-        console.log("✅ Using database intern_registration");
+        console.log("✅ Using database intern_registration_test");
 
         // Execute schema
         connection.query(schema, (err) => {
@@ -59,8 +59,17 @@ connection.connect((err) => {
           }
 
           console.log("✅ Database schema created successfully");
-          console.log("🎉 Database setup completed!");
-          connection.end();
+          console.log("🌱 Running seed data...");
+
+          // Import dan jalankan seed data
+          import("./seedData.js")
+            .then((module) => {
+              module.default();
+            })
+            .catch((err) => {
+              console.error("❌ Error running seed data:", err);
+              connection.end();
+            });
         });
       });
     }

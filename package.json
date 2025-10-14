@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "description": "Intern Registration Website",
   "scripts": {
+    "db:setup": "node setupDatabase.js",
+    "db:seed": "node seedData.js",
+    "db:reset": "npm run db:setup && npm run db:seed",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "setup:db": "cd backend && npm run db:setup",
-    "seed:db": "cd backend && npm run db:seed",
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
   },
   "devDependencies": {

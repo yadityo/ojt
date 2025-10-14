@@ -8,9 +8,7 @@ dist/
 */dist/
 
 # Environment variables
-.env
-.env.*
-!.env.example
+backend/.env
 
 # Logs
 npm-debug.log*
@@ -44,8 +42,9 @@ Thumbs.db
 *.swo
 
 # Uploads
-uploads/
-*/uploads/
+backend/uploads/documents/*
+backend/uploads/payments/*
+backend/uploads/photos/*
 
 # Temporary files
 tmp/

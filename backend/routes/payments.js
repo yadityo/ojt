@@ -52,6 +52,135 @@ const upload = multer({
   },
 });
 
+// =============================================
+// HELPER FUNCTIONS
+// =============================================
+
+// Fungsi untuk mendapatkan status berikutnya
+const getNextStatus = (currentStatus, installmentPlan = "4_cicilan") => {
+  const totalInstallments = parseInt(installmentPlan.split("_")[0]) || 4;
+
+  if (currentStatus === "pending") {
+    return "installment_1";
+  }
+
+  if (currentStatus.startsWith("installment_")) {
+    const currentInstallment = parseInt(currentStatus.split("_")[1]);
+    if (currentInstallment < totalInstallments) {
+      return `installment_${currentInstallment + 1}`;
+    } else {
+      return "paid";
+    }
+  }
+
+  return currentStatus;
+};
+
+// Fungsi untuk validasi status progression
+const validateStatusProgression = (
+  currentStatus,
+  requestedStatus,
+  installmentPlan = "4_cicilan"
+) => {
+  const totalInstallments = parseInt(installmentPlan.split("_")[0]) || 4;
+
+  // Dari pending ke installment_1 adalah progression yang valid
+  if (currentStatus === "pending" && requestedStatus === "installment_1") {
+    return true;
+  }
+
+  // Dari installment_X ke installment_X+1 adalah progression yang valid
+  if (
+    currentStatus.startsWith("installment_") &&
+    requestedStatus.startsWith("installment_")
+  ) {
+    const currentInstallment = parseInt(currentStatus.split("_")[1]);
+    const requestedInstallment = parseInt(requestedStatus.split("_")[1]);
+
+    return requestedInstallment === currentInstallment + 1;
+  }
+
+  // Dari installment_terakhir ke paid adalah progression yang valid
+  if (currentStatus.startsWith("installment_") && requestedStatus === "paid") {
+    const currentInstallment = parseInt(currentStatus.split("_")[1]);
+    return currentInstallment === totalInstallments;
+  }
+
+  return false;
+};
+
+// Fungsi untuk menghitung expected amount berdasarkan status
+const calculateExpectedAmount = (
+  totalAmount,
+  currentStatus,
+  currentAmountPaid,
+  installmentPlan = "4_cicilan"
+) => {
+  const totalInstallments = parseInt(installmentPlan.split("_")[0]) || 4;
+  const amountPerInstallment = totalAmount / totalInstallments;
+
+  let currentInstallment = 0;
+
+  // ✅ PERBAIKAN: Status pending berarti belum ada cicilan yang dibayar
+  if (currentStatus === "pending") {
+    currentInstallment = 0; // Belum ada cicilan yang dibayar
+  } else if (currentStatus.startsWith("installment_")) {
+    currentInstallment = parseInt(currentStatus.split("_")[1]);
+  }
+
+  const expectedAmountPaid = amountPerInstallment * currentInstallment;
+  return {
+    expectedAmountPaid,
+    amountPerInstallment,
+    currentInstallment,
+  };
+};
+
+// Helper functions untuk PDF receipt
+const getStatusText = (status) => {
+  const statusTexts = {
+    pending: "Menunggu Pembayaran",
+    installment_1: "Cicilan 1",
+    installment_2: "Cicilan 2",
+    installment_3: "Cicilan 3",
+    installment_4: "Cicilan 4",
+    installment_5: "Cicilan 5",
+    installment_6: "Cicilan 6",
+    paid: "Lunas",
+    overdue: "Terlambat",
+    cancelled: "Dibatalkan",
+  };
+  return statusTexts[status] || status;
+};
+
+const formatCurrency = (value) => {
+  if (!value && value !== 0) return "Rp 0";
+  const numValue = parseFloat(value);
+  return isNaN(numValue)
+    ? "Rp 0"
+    : `Rp ${Math.round(numValue).toLocaleString("id-ID")}`;
+};
+
+// =============================================
+// ROUTES
+// =============================================
+
+// Debug middleware
+router.use("/:id/upload-proof", (req, res, next) => {
+  console.log("📤 Upload proof request for payment:", req.params.id);
+  next();
+});
+
+router.use("/:id/status", (req, res, next) => {
+  console.log(
+    "🔄 Status update request for payment:",
+    req.params.id,
+    "body:",
+    req.body
+  );
+  next();
+});
+
 // Get all payments with filters for admin
 router.get("/", async (req, res) => {
   try {
@@ -66,8 +195,10 @@ router.get("/", async (req, res) => {
         u.email,
         u.phone,
         p.name as program_name,
-        p.training_cost,
-        p.departure_cost
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
+        p.duration as program_duration,
+        p.installment_plan as program_installment_plan
       FROM payments py
       LEFT JOIN registrations r ON py.registration_id = r.id
       LEFT JOIN users u ON r.user_id = u.id
@@ -120,17 +251,19 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get payment statistics for admin dashboard - FIXED FOR INSTALLMENT SYSTEM
+// Get payment statistics for admin dashboard
 router.get("/statistics", async (req, res) => {
   try {
     const [stats] = await db.promise().query(`
       SELECT 
         COUNT(*) as total_payments,
-        COALESCE(SUM(CASE WHEN status IN ('paid', 'installment_1', 'installment_2', 'installment_3', 'installment_4', 'installment_5', 'installment_6') THEN amount_paid ELSE 0 END), 0) as total_revenue,
+        COALESCE(SUM(amount_paid), 0) as total_revenue,
         COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending_payments,
         COALESCE(SUM(CASE WHEN status LIKE 'installment_%' THEN 1 ELSE 0 END), 0) as installment_payments,
+        COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) as paid_payments,
         COALESCE(SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END), 0) as overdue_payments
       FROM payments
+      WHERE status != 'cancelled'
     `);
 
     // Get recent payments
@@ -143,6 +276,7 @@ router.get("/statistics", async (req, res) => {
       LEFT JOIN registrations r ON py.registration_id = r.id
       LEFT JOIN users u ON r.user_id = u.id
       LEFT JOIN programs p ON r.program_id = p.id
+      WHERE py.status != 'cancelled'
       ORDER BY py.created_at DESC
       LIMIT 5
     `);
@@ -172,12 +306,14 @@ router.get("/user/:userId", async (req, res) => {
         py.*,
         r.registration_code,
         p.name as program_name,
-        p.training_cost,
-        p.departure_cost
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
+        p.duration as program_duration,
+        p.installment_plan as program_installment_plan
       FROM payments py
       LEFT JOIN registrations r ON py.registration_id = r.id
       LEFT JOIN programs p ON r.program_id = p.id
-      WHERE r.user_id = ?
+      WHERE r.user_id = ? AND py.status != 'cancelled'
       ORDER BY py.created_at DESC
     `,
       [req.params.userId]
@@ -196,7 +332,7 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
-// Upload payment proof
+// ✅ PERBAIKAN: Upload proof TIDAK mengubah status
 router.post(
   "/:id/upload-proof",
   upload.single("proof_image"),
@@ -211,16 +347,18 @@ router.post(
 
       const proofImage = `/uploads/payments/${req.file.filename}`;
 
+      // ✅ PERBAIKAN PENTING: Hanya update proof_image, JANGAN ubah status!
       await db
         .promise()
-        .query(
-          'UPDATE payments SET proof_image = ?, status = "pending" WHERE id = ?',
-          [proofImage, req.params.id]
-        );
+        .query("UPDATE payments SET proof_image = ? WHERE id = ?", [
+          proofImage,
+          req.params.id,
+        ]);
 
       res.json({
         success: true,
-        message: "Bukti pembayaran berhasil diupload",
+        message:
+          "Bukti pembayaran berhasil diupload dan menunggu verifikasi admin",
         data: {
           proof_image: proofImage,
         },
@@ -235,13 +373,24 @@ router.post(
   }
 );
 
-// Update payment status (approve, reject, etc) - FIXED FOR INSTALLMENT SYSTEM
+// ✅ PERBAIKAN BESAR: Update payment status dengan logika yang benar
 router.put("/:id/status", async (req, res) => {
+  const connection = await db.promise().getConnection();
+
   try {
+    await connection.beginTransaction();
+
     const { status, amount_paid, notes, verified_by } = req.body;
     const paymentId = req.params.id;
 
-    // Validasi status untuk installment system
+    console.log("🔧 Update payment status:", {
+      paymentId,
+      status,
+      amount_paid,
+      verified_by,
+    });
+
+    // Validasi status
     const validStatuses = [
       "pending",
       "installment_1",
@@ -256,55 +405,402 @@ router.put("/:id/status", async (req, res) => {
     ];
 
     if (!validStatuses.includes(status)) {
+      await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: `Status pembayaran tidak valid. Status yang diperbolehkan: ${validStatuses.join(
+        message: `Status pembayaran tidak valid. Gunakan: ${validStatuses.join(
           ", "
         )}`,
       });
     }
 
-    let receipt_number = null;
-    if (status === "paid") {
-      receipt_number = await generateReceiptNumber();
+    // Dapatkan data payment saat ini
+    const [currentPayments] = await connection.query(
+      `SELECT 
+        py.*,
+        p.training_cost as program_training_cost,
+        p.installment_plan as program_installment_plan
+       FROM payments py
+       LEFT JOIN registrations r ON py.registration_id = r.id
+       LEFT JOIN programs p ON r.program_id = p.id
+       WHERE py.id = ?`,
+      [paymentId]
+    );
+
+    if (currentPayments.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
     }
 
-    await db.promise().query(
+    const currentPayment = currentPayments[0];
+    const totalAmount = parseFloat(currentPayment.program_training_cost);
+    const currentAmountPaid = parseFloat(currentPayment.amount_paid || 0);
+    const newPaymentAmount = parseFloat(amount_paid || 0);
+    const newTotalPaid = currentAmountPaid + newPaymentAmount;
+
+    console.log("💰 Payment calculation:", {
+      totalAmount,
+      currentAmountPaid,
+      newPaymentAmount,
+      newTotalPaid,
+      currentStatus: currentPayment.status,
+      requestedStatus: status,
+    });
+
+    // ✅ PERBAIKAN KRITIS: Deklarasi variabel di AWAL
+    let finalStatus = status;
+    let receipt_number = currentPayment.receipt_number;
+    let due_date = currentPayment.due_date;
+
+    // Validasi: amount_paid tidak boleh melebihi total amount
+    if (newTotalPaid > totalAmount) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Jumlah pembayaran melebihi total tagihan. Total: ${totalAmount}, Sudah dibayar: ${currentAmountPaid}, Maksimal: ${
+          totalAmount - currentAmountPaid
+        }`,
+      });
+    }
+
+    // ✅ PERBAIKAN: LOGIKA AUTO-LUNAS - HARUS SEBELUM VALIDASI LAIN
+    if (newTotalPaid >= totalAmount && finalStatus !== "cancelled") {
+      console.log("🎉 Auto-lunas: Pembayaran mencapai total amount");
+      finalStatus = "paid";
+
+      if (!receipt_number) {
+        receipt_number = await generateReceiptNumber();
+        console.log(
+          "🧾 Generated receipt number untuk auto-lunas:",
+          receipt_number
+        );
+      }
+    }
+
+    // ✅ PERBAIKAN: Validasi status 'paid' manual - hanya jika diminta manual
+    if (status === "paid" && newTotalPaid < totalAmount) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Status tidak bisa diubah menjadi 'paid' karena pembayaran belum lunas. Total: ${totalAmount}, Dibayar: ${newTotalPaid}, Kurang: ${
+          totalAmount - newTotalPaid
+        }`,
+      });
+    }
+
+    // Validasi progression status untuk cicilan
+    if (status.startsWith("installment_")) {
+      const installmentCount = currentPayment.program_installment_plan
+        ? parseInt(currentPayment.program_installment_plan.split("_")[0])
+        : 4;
+
+      const { expectedAmountPaid, amountPerInstallment, currentInstallment } =
+        calculateExpectedAmount(
+          totalAmount,
+          currentPayment.status,
+          currentAmountPaid,
+          currentPayment.program_installment_plan
+        );
+
+      const requestedInstallment = parseInt(status.split("_")[1]);
+
+      console.log("🔍 Status progression validation:", {
+        currentStatus: currentPayment.status,
+        currentInstallment: currentInstallment,
+        requestedInstallment: requestedInstallment,
+        amountPerInstallment: amountPerInstallment,
+      });
+
+      // Validasi progression status
+      if (
+        !validateStatusProgression(
+          currentPayment.status,
+          status,
+          currentPayment.program_installment_plan
+        )
+      ) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Progression status tidak valid. Dari ${currentPayment.status} tidak bisa langsung ke ${status}`,
+        });
+      }
+
+      // Validasi jumlah pembayaran untuk cicilan
+      const expectedPayment = amountPerInstallment;
+      const tolerance = 1000;
+
+      if (Math.abs(newPaymentAmount - expectedPayment) > tolerance) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Jumlah pembayaran untuk cicilan ${requestedInstallment} tidak sesuai. Seharusnya: Rp ${expectedPayment.toLocaleString(
+            "id-ID"
+          )}`,
+        });
+      }
+    }
+
+    // Auto-progression logic
+    if (finalStatus !== "cancelled" && newPaymentAmount > 0) {
+      const autoNextStatus = getNextStatus(
+        currentPayment.status,
+        currentPayment.program_installment_plan
+      );
+
+      console.log("🔄 Auto-progression check:", {
+        current: currentPayment.status,
+        requested: finalStatus,
+        autoNext: autoNextStatus,
+      });
+
+      if (
+        (finalStatus.startsWith("installment_") || finalStatus === "paid") &&
+        autoNextStatus !== finalStatus &&
+        validateStatusProgression(
+          currentPayment.status,
+          autoNextStatus,
+          currentPayment.program_installment_plan
+        )
+      ) {
+        finalStatus = autoNextStatus;
+        console.log("🚀 Auto-progression applied:", {
+          from: currentPayment.status,
+          to: finalStatus,
+        });
+      }
+    }
+
+    // Generate receipt number untuk pembayaran yang berhasil
+    if (
+      !receipt_number &&
+      finalStatus !== "pending" &&
+      finalStatus !== "cancelled" &&
+      newPaymentAmount > 0
+    ) {
+      receipt_number = await generateReceiptNumber();
+      console.log("🧾 Generated receipt number:", receipt_number);
+    }
+
+    // Kosongkan due_date setelah verifikasi berhasil
+    if (finalStatus !== "paid" && finalStatus !== "cancelled") {
+      due_date = null;
+      console.log("📅 Due date dikosongkan untuk cicilan berikutnya");
+    }
+
+    // Update payment dengan status yang sudah dikoreksi
+    await connection.query(
       `UPDATE payments 
-       SET status = ?, amount_paid = ?, receipt_number = ?, notes = ?, verified_by = ?, verified_at = NOW() 
+       SET status = ?, amount_paid = ?, receipt_number = ?, notes = COALESCE(?, notes), 
+           verified_by = ?, verified_at = NOW(), amount = ?, due_date = ?
        WHERE id = ?`,
-      [status, amount_paid, receipt_number, notes, verified_by, paymentId]
+      [
+        finalStatus,
+        newTotalPaid,
+        receipt_number,
+        notes,
+        verified_by,
+        totalAmount,
+        due_date,
+        paymentId,
+      ]
     );
 
     // Add to payment history
-    await db.promise().query(
-      `INSERT INTO payment_history (payment_id, old_status, new_status, amount_changed, notes, changed_by) 
-       SELECT id, status, ?, ?, ?, ? FROM payments WHERE id = ?`,
-      [status, amount_paid, notes, verified_by, paymentId]
+    await connection.query(
+      `INSERT INTO payment_history 
+       (payment_id, old_status, new_status, old_amount_paid, new_amount_paid, amount_changed, notes, changed_by) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        paymentId,
+        currentPayment.status,
+        finalStatus,
+        currentAmountPaid,
+        newTotalPaid,
+        newPaymentAmount,
+        notes ||
+          `Status berubah dari ${currentPayment.status} ke ${finalStatus}`,
+        verified_by,
+      ]
     );
+
+    await connection.commit();
+
+    console.log("✅ Payment status updated successfully:", {
+      paymentId,
+      oldStatus: currentPayment.status,
+      newStatus: finalStatus,
+      receipt_number,
+      amount_paid: newTotalPaid,
+    });
 
     res.json({
       success: true,
       message: "Status pembayaran berhasil diperbarui",
       data: {
         receipt_number,
+        amount_paid: newTotalPaid,
+        status: finalStatus,
+        due_date: due_date,
       },
     });
   } catch (error) {
-    console.error("Error updating payment status:", error);
+    await connection.rollback();
+    console.error("❌ Error updating payment status:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Internal server error: " + error.message,
     });
+  } finally {
+    connection.release();
   }
 });
 
-// Manual payment input by admin - FIXED FOR INSTALLMENT SYSTEM
-router.post("/manual", async (req, res) => {
+// ✅ PERBAIKAN BESAR: Endpoint terbitkan tagihan dengan VALIDASI KETAT
+router.put("/:id/due-date", async (req, res) => {
+  const connection = await db.promise().getConnection();
+
   try {
+    await connection.beginTransaction();
+
+    const { due_date, notes, verified_by } = req.body;
+    const paymentId = req.params.id;
+
+    console.log("📅 Admin menerbitkan tagihan:", {
+      paymentId,
+      due_date,
+      verified_by,
+    });
+
+    // Check if payment exists dengan data lengkap
+    const [payments] = await connection.query(
+      `
+      SELECT 
+        py.*,
+        p.training_cost as program_training_cost,
+        p.installment_plan as program_installment_plan
+      FROM payments py
+      LEFT JOIN registrations r ON py.registration_id = r.id  
+      LEFT JOIN programs p ON r.program_id = p.id
+      WHERE py.id = ?
+      `,
+      [paymentId]
+    );
+
+    if (payments.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    const currentPayment = payments[0];
+    const totalAmount = parseFloat(currentPayment.program_training_cost);
+
+    // ✅ PERBAIKAN: Validasi due_date
+    if (!due_date) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Due date is required",
+      });
+    }
+
+    const dueDate = new Date(due_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dueDate < today) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Due date harus di masa depan",
+      });
+    }
+
+    // ✅ PERBAIKAN: Validasi status
+    if (currentPayment.status === "paid") {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message:
+          "Tidak bisa menerbitkan tagihan untuk pembayaran yang sudah LUNAS",
+      });
+    }
+
+    // ✅ PERBAIKAN PENTING: TIDAK mengubah status, hanya set due_date
+    // Status tetap sama, hanya due_date yang diupdate
+    const currentStatus = currentPayment.status;
+
+    // Update HANYA due_date, status TETAP
+    await connection.query(
+      `UPDATE payments 
+       SET due_date = ?, notes = COALESCE(?, notes), updated_at = NOW()
+       WHERE id = ?`,
+      [due_date, notes, paymentId]
+    );
+
+    const changedBy = verified_by || null;
+
+    // Add to payment history - Tandai sebagai penerbitan tagihan
+    await connection.query(
+      `INSERT INTO payment_history 
+       (payment_id, old_status, new_status, notes, changed_by) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        paymentId,
+        currentStatus,
+        currentStatus, // Status tetap sama
+        `Tagihan diterbitkan. Jatuh tempo: ${new Date(
+          due_date
+        ).toLocaleDateString("id-ID")} - Status tetap: ${currentStatus} - ${
+          notes || "Tidak ada catatan"
+        }`,
+        changedBy,
+      ]
+    );
+
+    await connection.commit();
+
+    console.log("✅ Tagihan berhasil diterbitkan:", {
+      paymentId,
+      status: currentStatus,
+      due_date: due_date,
+    });
+
+    res.json({
+      success: true,
+      message: "Tagihan berhasil diterbitkan",
+      data: {
+        due_date: due_date,
+        status: currentStatus, // Kembalikan status yang sama
+      },
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("❌ Error updating due date:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error: " + error.message,
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+// Manual payment input by admin
+router.post("/manual", async (req, res) => {
+  const connection = await db.promise().getConnection();
+
+  try {
+    await connection.beginTransaction();
+
     const {
       registration_id,
-      amount,
       amount_paid = 0,
       payment_method = "transfer",
       bank_name,
@@ -313,57 +809,33 @@ router.post("/manual", async (req, res) => {
       due_date,
       notes,
       verified_by,
-      status = "pending", // Sekarang bisa: pending, installment_1, installment_2, ..., installment_6, paid
+      status = "pending",
     } = req.body;
 
-    console.log("Manual payment request:", req.body);
+    console.log("🔧 Manual payment request:", req.body);
 
     // VALIDASI INPUT
-    if (!registration_id || !amount) {
+    if (!registration_id) {
+      await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Registration ID and amount are required",
+        message: "Registration ID is required",
       });
     }
 
-    // Validasi amount_paid tidak boleh lebih besar dari amount
-    const paidAmount = parseFloat(amount_paid || 0);
-    const totalAmount = parseFloat(amount);
-
-    if (paidAmount > totalAmount) {
-      return res.status(400).json({
-        success: false,
-        message: "Amount paid cannot exceed total amount",
-      });
-    }
-
-    // Validasi status yang diperbolehkan
-    const validStatuses = [
-      "pending",
-      "installment_1",
-      "installment_2",
-      "installment_3",
-      "installment_4",
-      "installment_5",
-      "installment_6",
-      "paid",
-      "overdue",
-      "cancelled",
-    ];
-
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Allowed values: ${validStatuses.join(", ")}`,
-      });
-    }
-
-    // Check if registration exists
-    const [registrations] = await db
-      .promise()
-      .query("SELECT * FROM registrations WHERE id = ?", [registration_id]);
+    // Check if registration exists dan dapatkan program info
+    const [registrations] = await connection.query(
+      `
+      SELECT r.*, p.training_cost, p.installment_plan 
+      FROM registrations r
+      LEFT JOIN programs p ON r.program_id = p.id
+      WHERE r.id = ?
+      `,
+      [registration_id]
+    );
 
     if (registrations.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         success: false,
         message: "Registration not found",
@@ -371,74 +843,171 @@ router.post("/manual", async (req, res) => {
     }
 
     const registration = registrations[0];
+    const totalAmount = parseFloat(registration.training_cost);
+    const paymentAmount = parseFloat(amount_paid);
 
-    // Generate invoice number
-    const isInvoice = paidAmount === 0; // Jika amount_paid = 0, ini adalah tagihan
-    const invoice_number = isInvoice
-      ? `INV-${Date.now()}`
-      : `PAY-MANUAL-${Date.now()}`;
-
-    // Untuk tagihan (invoice), receipt_number null sampai dibayar
-    const receipt_number =
-      paidAmount > 0 ? await generateReceiptNumber() : null;
-
-    // Tentukan status - gunakan dari request atau tentukan otomatis
-    let paymentStatus = status;
-    if (!paymentStatus) {
-      // Logic status baru berdasarkan installment system
-      if (paidAmount >= totalAmount) {
-        paymentStatus = "paid";
-      } else if (paidAmount > 0) {
-        // Untuk pembayaran cicilan, default ke installment_1
-        // Dalam implementasi real, ini harus disesuaikan dengan business logic
-        paymentStatus = "installment_1";
-      } else {
-        paymentStatus = "pending";
-      }
+    if (paymentAmount <= 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Amount paid must be greater than 0",
+      });
     }
 
-    // Create payment record
-    const [result] = await db.promise().query(
-      `INSERT INTO payments 
-       (registration_id, invoice_number, amount, amount_paid, payment_method, bank_name, account_number, 
-        status, payment_date, due_date, receipt_number, notes, verified_by, verified_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        registration_id,
-        invoice_number,
-        totalAmount,
-        paidAmount,
-        payment_method,
-        bank_name,
-        account_number,
-        paymentStatus,
-        payment_date,
-        due_date,
-        receipt_number,
-        notes,
-        paidAmount > 0 ? verified_by : null,
-        paidAmount > 0 ? new Date() : null,
-      ]
+    // Cari payment yang sudah ada untuk registrasi ini
+    const [existingPayments] = await connection.query(
+      "SELECT * FROM payments WHERE registration_id = ? AND status != 'cancelled'",
+      [registration_id]
     );
 
-    res.status(201).json({
-      success: true,
-      message: isInvoice
-        ? "Invoice created successfully"
-        : "Manual payment recorded successfully",
-      data: {
-        payment_id: result.insertId,
-        invoice_number,
-        receipt_number,
-        status: paymentStatus,
-      },
-    });
+    if (existingPayments.length > 0) {
+      // UPDATE EXISTING PAYMENT (SISTEM SATU INVOICE)
+      const existingPayment = existingPayments[0];
+      const currentAmountPaid = parseFloat(existingPayment.amount_paid || 0);
+      const newTotalPaid = currentAmountPaid + paymentAmount;
+
+      // Validasi tidak melebihi total amount
+      if (newTotalPaid > totalAmount) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Jumlah pembayaran melebihi total tagihan. Total: ${totalAmount}, Sudah dibayar: ${currentAmountPaid}, Maksimal: ${
+            totalAmount - currentAmountPaid
+          }`,
+        });
+      }
+
+      // Tentukan status baru
+      let newStatus = status;
+      if (newTotalPaid >= totalAmount) {
+        newStatus = "paid";
+      } else if (status === "pending" && currentAmountPaid === 0) {
+        newStatus = "installment_1"; // Otomatis ke cicilan 1 jika pertama kali bayar
+      }
+
+      let receipt_number = existingPayment.receipt_number;
+      if (newStatus === "paid" && !receipt_number) {
+        receipt_number = await generateReceiptNumber();
+      }
+
+      // Update payment yang sudah ada
+      await connection.query(
+        `UPDATE payments 
+         SET amount_paid = ?, status = ?, receipt_number = ?, 
+             payment_method = ?, bank_name = ?, account_number = ?,
+             payment_date = ?, due_date = ?, notes = COALESCE(?, notes),
+             verified_by = ?, verified_at = NOW(), amount = ?
+         WHERE id = ?`,
+        [
+          newTotalPaid,
+          newStatus,
+          receipt_number,
+          payment_method,
+          bank_name,
+          account_number,
+          payment_date,
+          due_date,
+          notes,
+          verified_by,
+          totalAmount,
+          existingPayment.id,
+        ]
+      );
+
+      // Add to payment history
+      await connection.query(
+        `INSERT INTO payment_history 
+         (payment_id, old_status, new_status, old_amount_paid, new_amount_paid, amount_changed, notes, changed_by) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          existingPayment.id,
+          existingPayment.status,
+          newStatus,
+          currentAmountPaid,
+          newTotalPaid,
+          paymentAmount,
+          notes,
+          verified_by,
+        ]
+      );
+
+      await connection.commit();
+
+      res.json({
+        success: true,
+        message:
+          "Pembayaran manual berhasil ditambahkan ke invoice yang sudah ada",
+        data: {
+          payment_id: existingPayment.id,
+          invoice_number: existingPayment.invoice_number,
+          receipt_number: receipt_number,
+          status: newStatus,
+          amount_paid: newTotalPaid,
+        },
+      });
+    } else {
+      // BUAT PAYMENT BARU (hanya untuk registrasi yang belum punya payment)
+      const invoice_number = `INV-${Date.now()}`;
+
+      let paymentStatus = status;
+      if (paymentAmount >= totalAmount) {
+        paymentStatus = "paid";
+      } else if (paymentAmount > 0) {
+        paymentStatus = "installment_1";
+      }
+
+      let receipt_number = null;
+      if (paymentStatus === "paid") {
+        receipt_number = await generateReceiptNumber();
+      }
+
+      // Create payment record
+      const [result] = await connection.query(
+        `INSERT INTO payments 
+         (registration_id, invoice_number, amount, amount_paid, payment_method, bank_name, account_number, 
+          status, payment_date, due_date, receipt_number, notes, verified_by, verified_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          registration_id,
+          invoice_number,
+          totalAmount,
+          paymentAmount,
+          payment_method,
+          bank_name,
+          account_number,
+          paymentStatus,
+          payment_date,
+          due_date,
+          receipt_number,
+          notes,
+          verified_by,
+          paymentAmount > 0 ? new Date() : null,
+        ]
+      );
+
+      await connection.commit();
+
+      res.status(201).json({
+        success: true,
+        message: "Invoice pembayaran berhasil dibuat",
+        data: {
+          payment_id: result.insertId,
+          invoice_number,
+          receipt_number,
+          status: paymentStatus,
+          amount_paid: paymentAmount,
+        },
+      });
+    }
   } catch (error) {
-    console.error("Error creating manual payment:", error);
+    await connection.rollback();
+    console.error("❌ Error creating manual payment:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error: " + error.message,
     });
+  } finally {
+    connection.release();
   }
 });
 
@@ -455,10 +1024,10 @@ router.get("/:id", async (req, res) => {
         u.phone,
         u.address,
         p.name as program_name,
-        p.training_cost,
-        p.departure_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
         p.duration as program_duration,
-        p.schedule as program_schedule,
+        p.installment_plan as program_installment_plan,
         verifier.full_name as verified_by_name
       FROM payments py
       LEFT JOIN registrations r ON py.registration_id = r.id
@@ -489,10 +1058,26 @@ router.get("/:id", async (req, res) => {
       [req.params.id]
     );
 
+    const payment = payments[0];
+
+    // Pastikan amount sesuai dengan program_training_cost
+    if (
+      parseFloat(payment.amount) !== parseFloat(payment.program_training_cost)
+    ) {
+      // Auto-correct jika tidak sesuai
+      await db
+        .promise()
+        .query("UPDATE payments SET amount = ? WHERE id = ?", [
+          payment.program_training_cost,
+          payment.id,
+        ]);
+      payment.amount = payment.program_training_cost;
+    }
+
     res.json({
       success: true,
       data: {
-        ...payments[0],
+        ...payment,
         history,
       },
     });
@@ -507,6 +1092,7 @@ router.get("/:id", async (req, res) => {
 
 // Generate PDF Receipt
 router.get("/:id/receipt", async (req, res) => {
+  let doc;
   try {
     const [payments] = await db.promise().query(
       `
@@ -518,9 +1104,10 @@ router.get("/:id/receipt", async (req, res) => {
         u.phone,
         u.address,
         p.name as program_name,
-        p.training_cost,
-        p.departure_cost,
+        p.training_cost as program_training_cost,
+        p.departure_cost as program_departure_cost,
         p.duration as program_duration,
+        p.installment_plan as program_installment_plan,
         verifier.full_name as verified_by_name
       FROM payments py
       LEFT JOIN registrations r ON py.registration_id = r.id
@@ -541,8 +1128,50 @@ router.get("/:id/receipt", async (req, res) => {
 
     const payment = payments[0];
 
+    // Validasi: hanya payment yang sudah diverifikasi yang bisa download kwitansi
+    if (!payment.verified_by) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Kwitansi hanya tersedia untuk pembayaran yang sudah diverifikasi",
+      });
+    }
+
+    const totalAmount = parseFloat(payment.program_training_cost);
+    const amountPaid = parseFloat(payment.amount_paid || 0);
+
+    // Hitung jumlah cicilan saat ini
+    let currentInstallment = 0;
+    let currentInstallmentAmount = 0;
+
+    if (payment.status === "pending") {
+      currentInstallment = 0;
+      currentInstallmentAmount = 0;
+    } else if (payment.status.startsWith("installment_")) {
+      currentInstallment = parseInt(payment.status.split("_")[1]);
+      // Hitung amount untuk cicilan ini berdasarkan selisih dengan history
+      const [history] = await db.promise().query(
+        `SELECT amount_changed FROM payment_history 
+         WHERE payment_id = ? AND new_status = ? 
+         ORDER BY changed_at DESC LIMIT 1`,
+        [payment.id, payment.status]
+      );
+
+      if (history.length > 0) {
+        currentInstallmentAmount = parseFloat(history[0].amount_changed);
+      } else {
+        // Fallback calculation
+        const installmentCount = payment.program_installment_plan
+          ? parseInt(payment.program_installment_plan.split("_")[0])
+          : 4;
+        currentInstallmentAmount = totalAmount / installmentCount;
+      }
+    } else if (payment.status === "paid") {
+      currentInstallmentAmount = amountPaid;
+    }
+
     // Create PDF document
-    const doc = new PDFDocument({ margin: 50 });
+    doc = new PDFDocument({ margin: 50 });
 
     // Set response headers for PDF
     res.setHeader("Content-Type", "application/pdf");
@@ -556,7 +1185,6 @@ router.get("/:id/receipt", async (req, res) => {
     // Pipe PDF to response
     doc.pipe(res);
 
-    // Add content to PDF
     // Header
     doc
       .fontSize(20)
@@ -580,6 +1208,7 @@ router.get("/:id/receipt", async (req, res) => {
       `No. Kwitansi: ${payment.receipt_number || payment.invoice_number}`
     );
     doc.text(`No. Invoice: ${payment.invoice_number}`);
+    doc.text(`Status: ${getStatusText(payment.status)}`);
     doc.text(
       `Tanggal: ${
         payment.payment_date
@@ -587,6 +1216,13 @@ router.get("/:id/receipt", async (req, res) => {
           : new Date().toLocaleDateString("id-ID")
       }`
     );
+
+    // Tampilkan informasi cicilan khusus
+    if (payment.status.startsWith("installment_")) {
+      doc.text(
+        `Cicilan Ke: ${currentInstallment} - ${getStatusText(payment.status)}`
+      );
+    }
     doc.moveDown();
 
     // Participant Info
@@ -600,9 +1236,22 @@ router.get("/:id/receipt", async (req, res) => {
     doc.font("Helvetica-Bold").text("PROGRAM:").font("Helvetica");
     doc.text(`Nama Program: ${payment.program_name}`);
     doc.text(`Durasi: ${payment.program_duration}`);
+    doc.text(`Total Biaya: ${formatCurrency(totalAmount)}`);
+    doc.text(
+      `Plan Cicilan: ${payment.program_installment_plan || "4 cicilan"}`
+    );
     doc.moveDown();
 
-    // Payment Details
+    // Payment Progress
+    doc.font("Helvetica-Bold").text("PROGRESS PEMBAYARAN:").font("Helvetica");
+    const progressPercentage =
+      totalAmount > 0 ? (amountPaid / totalAmount) * 100 : 0;
+    doc.text(`Progress: ${progressPercentage.toFixed(1)}%`);
+    doc.text(`Sudah Dibayar: ${formatCurrency(amountPaid)}`);
+    doc.text(`Sisa: ${formatCurrency(totalAmount - amountPaid)}`);
+    doc.moveDown();
+
+    // Payment Details - RINCIAN CICILAN
     doc.font("Helvetica-Bold").text("RINCIAN PEMBAYARAN:").font("Helvetica");
 
     const tableTop = doc.y;
@@ -617,12 +1266,20 @@ router.get("/:id/receipt", async (req, res) => {
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
     doc.moveDown();
 
-    // Items
-    doc.text(`Biaya Program ${payment.program_name}`, itemX);
-    doc.text(
-      `Rp ${parseFloat(payment.amount).toLocaleString("id-ID")}`,
-      amountX
-    );
+    // Items - Tampilkan informasi cicilan
+    if (payment.status.startsWith("installment_")) {
+      doc.text(
+        `Pembayaran Cicilan ${currentInstallment} - ${payment.program_name}`,
+        itemX
+      );
+      doc.text(`${formatCurrency(currentInstallmentAmount)}`, amountX);
+    } else if (payment.status === "paid") {
+      doc.text(`Pelunasan Program ${payment.program_name}`, itemX);
+      doc.text(`${formatCurrency(currentInstallmentAmount)}`, amountX);
+    } else {
+      doc.text(`Biaya Program ${payment.program_name}`, itemX);
+      doc.text(`${formatCurrency(totalAmount)}`, amountX);
+    }
     doc.moveDown();
 
     // Total
@@ -631,48 +1288,39 @@ router.get("/:id/receipt", async (req, res) => {
 
     doc.font("Helvetica-Bold");
     doc.text("TOTAL TAGIHAN:", itemX);
-    doc.text(
-      `Rp ${parseFloat(payment.amount).toLocaleString("id-ID")}`,
-      amountX
-    );
+    doc.text(`${formatCurrency(totalAmount)}`, amountX);
     doc.moveDown();
 
     doc.text("SUDAH DIBAYAR:", itemX);
-    doc.text(
-      `Rp ${parseFloat(payment.amount_paid || 0).toLocaleString("id-ID")}`,
-      amountX
-    );
+    doc.text(`${formatCurrency(amountPaid)}`, amountX);
     doc.moveDown();
 
-    if (payment.amount_paid < payment.amount) {
+    if (amountPaid < totalAmount) {
       doc.text("SISA TAGIHAN:", itemX);
-      doc.text(
-        `Rp ${(
-          parseFloat(payment.amount) - parseFloat(payment.amount_paid || 0)
-        ).toLocaleString("id-ID")}`,
-        amountX
-      );
-      doc.moveDown();
+      doc.text(`${formatCurrency(totalAmount - amountPaid)}`, amountX);
     }
+    doc.moveDown();
 
     doc.moveDown();
     doc.font("Helvetica-Bold").fontSize(14);
     doc.text(
-      `TOTAL YANG SUDAH DIBAYAR: Rp ${parseFloat(
-        payment.amount_paid || 0
-      ).toLocaleString("id-ID")}`,
+      `STATUS: ${
+        payment.status === "paid"
+          ? "LUNAS"
+          : getStatusText(payment.status).toUpperCase()
+      }`,
       { align: "center" }
     );
     doc.moveDown();
 
     // Payment Confirmation
-    if (payment.status === "paid") {
+    if (payment.status === "paid" || payment.verified_by) {
       doc
         .fontSize(12)
         .font("Helvetica-Bold")
         .text("KONFIRMASI PEMBAYARAN:")
         .font("Helvetica");
-      doc.text(`Status: LUNAS`);
+      doc.text(`Status: ${getStatusText(payment.status)}`);
       doc.text(
         `Tanggal Pembayaran: ${
           payment.payment_date
@@ -682,6 +1330,9 @@ router.get("/:id/receipt", async (req, res) => {
       );
       doc.text(`Metode: ${payment.payment_method || "Transfer Bank"}`);
       if (payment.bank_name) doc.text(`Bank: ${payment.bank_name}`);
+      if (payment.verified_by_name) {
+        doc.text(`Terverifikasi oleh: ${payment.verified_by_name}`);
+      }
       doc.moveDown();
     }
 
@@ -701,100 +1352,35 @@ router.get("/:id/receipt", async (req, res) => {
       .text(
         "** Kwitansi ini sah dan dapat digunakan sebagai bukti pembayaran yang valid **",
         { align: "center" }
-      );
-    doc.text("Terima kasih telah mempercayai program magang kami", {
-      align: "center",
-    });
-    doc.text(`Generated on: ${new Date().toLocaleString("id-ID")}`, {
-      align: "center",
-    });
+      )
+      .text("Terima kasih telah mempercayai program magang kami", {
+        align: "center",
+      })
+      .text(`Generated on: ${new Date().toLocaleString("id-ID")}`, {
+        align: "center",
+      });
 
     // Finalize PDF
     doc.end();
   } catch (error) {
     console.error("Error generating receipt PDF:", error);
-    res.status(500).json({
-      success: false,
-      message: "Gagal membuat PDF kwitansi",
-    });
-  }
-});
 
-// Get receipt data (JSON version - for fallback)
-router.get("/:id/receipt-data", async (req, res) => {
-  try {
-    const [payments] = await db.promise().query(
-      `
-      SELECT 
-        py.*,
-        r.registration_code,
-        u.full_name,
-        u.email,
-        u.phone,
-        u.address,
-        p.name as program_name,
-        p.training_cost,
-        p.departure_cost,
-        p.duration as program_duration,
-        verifier.full_name as verified_by_name
-      FROM payments py
-      LEFT JOIN registrations r ON py.registration_id = r.id
-      LEFT JOIN users u ON r.user_id = u.id
-      LEFT JOIN programs p ON r.program_id = p.id
-      LEFT JOIN users verifier ON py.verified_by = verifier.id
-      WHERE py.id = ?
-    `,
-      [req.params.id]
-    );
-
-    if (payments.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
+    // Jika doc sudah dibuat, hancurkan
+    if (doc) {
+      doc.end();
     }
 
-    const payment = payments[0];
-
-    const receiptData = {
-      receipt_number: payment.receipt_number,
-      invoice_number: payment.invoice_number,
-      date: new Date().toLocaleDateString("id-ID"),
-      participant: {
-        name: payment.full_name,
-        email: payment.email,
-        phone: payment.phone,
-        address: payment.address,
-      },
-      program: {
-        name: payment.program_name,
-        duration: payment.program_duration,
-      },
-      payment: {
-        amount: payment.amount,
-        amount_paid: payment.amount_paid,
-        payment_date: payment.payment_date
-          ? new Date(payment.payment_date).toLocaleDateString("id-ID")
-          : null,
-        method: payment.payment_method,
-        verified_by: payment.verified_by_name,
-      },
-    };
-
-    res.json({
-      success: true,
-      data: receiptData,
-    });
-  } catch (error) {
-    console.error("Error generating receipt data:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    // Kirim error response hanya jika header belum terkirim
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "Gagal membuat PDF kwitansi: " + error.message,
+      });
+    }
   }
 });
 
-// Get active registrations for invoice creation
+// Get active registrations for payment management
 router.get("/registrations/active", async (req, res) => {
   try {
     const [registrations] = await db.promise().query(`
@@ -804,18 +1390,19 @@ router.get("/registrations/active", async (req, res) => {
         u.email,
         p.name as program_name,
         p.training_cost,
-        COALESCE(SUM(py.amount_paid), 0) as total_paid
+        p.installment_plan,
+        COALESCE(py.amount_paid, 0) as amount_paid,
+        py.status as payment_status,
+        py.invoice_number
       FROM registrations r
       LEFT JOIN users u ON r.user_id = u.id
       LEFT JOIN programs p ON r.program_id = p.id
-      LEFT JOIN payments py ON r.id = py.registration_id AND py.status IN ('paid', 'installment_1', 'installment_2', 'installment_3', 'installment_4', 'installment_5', 'installment_6')
-      WHERE r.id IN (
-        SELECT DISTINCT registration_id 
+      LEFT JOIN payments py ON r.id = py.registration_id AND py.status != 'cancelled'
+      WHERE r.id NOT IN (
+        SELECT registration_id 
         FROM payments 
-        WHERE status NOT IN ('cancelled')
+        WHERE status = 'cancelled'
       )
-      GROUP BY r.id
-      HAVING total_paid < p.training_cost
       ORDER BY r.registration_date DESC
     `);
 
@@ -825,88 +1412,6 @@ router.get("/registrations/active", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching active registrations:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-});
-
-// Get payment installment plan
-router.get("/:id/installment-plan", async (req, res) => {
-  try {
-    const paymentId = req.params.id;
-
-    const [payments] = await db
-      .promise()
-      .query(`SELECT * FROM payments WHERE id = ?`, [paymentId]);
-
-    if (payments.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
-
-    const payment = payments[0];
-
-    // Get registration and program info
-    const [details] = await db.promise().query(
-      `SELECT 
-        r.*,
-        p.training_cost,
-        p.installment_plan,
-        p.name as program_name
-       FROM registrations r
-       LEFT JOIN programs p ON r.program_id = p.id
-       WHERE r.id = ?`,
-      [payment.registration_id]
-    );
-
-    if (details.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Registration not found",
-      });
-    }
-
-    const detail = details[0];
-
-    // Calculate installment details
-    const totalAmount = parseFloat(detail.training_cost);
-    const paidAmount = parseFloat(payment.amount_paid || 0);
-    const remaining = totalAmount - paidAmount;
-
-    // Get installment plan from program
-    const installmentPlan = detail.installment_plan || "none";
-    let installments = [];
-
-    if (installmentPlan !== "none") {
-      const numInstallments = parseInt(installmentPlan.split("_")[0]);
-      const installmentAmount = Math.round(remaining / numInstallments);
-
-      installments = Array.from({ length: numInstallments }, (_, i) => ({
-        number: i + 1,
-        amount: installmentAmount,
-        due_date: new Date(Date.now() + (i + 1) * 30 * 24 * 60 * 60 * 1000), // 30 days apart
-      }));
-    }
-
-    res.json({
-      success: true,
-      data: {
-        payment,
-        registration: detail,
-        installment_plan: {
-          total_amount: totalAmount,
-          paid_amount: paidAmount,
-          remaining: remaining,
-          installments: installments,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching installment plan:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
