@@ -46,6 +46,10 @@ backend/uploads/documents/*
 backend/uploads/payments/*
 backend/uploads/photos/*
 
+!backend/uploads/documents/.gitkeep
+!backend/uploads/payments/.gitkeep
+!backend/uploads/photos/.gitkeep
+
 # Temporary files
 tmp/
 temp/
