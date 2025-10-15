@@ -1,7 +1,8 @@
 {
   "name": "intern-registration-app",
   "version": "1.0.0",
-  "description": "Intern Registration Website",
+  "description": "Intern Registration App",
+  "type": "module",
   "scripts": {
     "db:setup": "node backend/scripts/setupDatabase.js",
     "db:seed": "node backend/scripts/seedData.js",

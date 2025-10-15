@@ -2,36 +2,77 @@ import bcrypt from "bcryptjs";
 import db from "../config/database.js";
 
 const seedData = async () => {
+  let connection;
   try {
     console.log("🌱 Seeding database with initial data...");
 
-    // Hash passwords sesuai permintaan
+    // Test database connection
+    connection = db.promise();
+    await connection.execute("SELECT 1");
+    console.log("✅ Database connection established");
+
+    // Hash passwords
     const adminPassword = await bcrypt.hash("admin", 12);
     const user1Password = await bcrypt.hash("user1", 12);
     const user2Password = await bcrypt.hash("user2", 12);
     const user3Password = await bcrypt.hash("user3", 12);
 
+    // Clear existing data (optional - comment out if you want to keep existing data)
+    console.log("🧹 Clearing existing data...");
+    await connection.execute("DELETE FROM payments");
+    await connection.execute("DELETE FROM payment_history");
+    await connection.execute("DELETE FROM placement_status");
+    await connection.execute("DELETE FROM selection_status");
+    await connection.execute("DELETE FROM registrations");
+    await connection.execute("DELETE FROM programs");
+    await connection.execute("DELETE FROM program_categories");
+    await connection.execute("DELETE FROM users WHERE id > 0");
+
+    // Reset auto increments
+    await connection.execute("ALTER TABLE users AUTO_INCREMENT = 1");
+    await connection.execute(
+      "ALTER TABLE program_categories AUTO_INCREMENT = 1"
+    );
+    await connection.execute("ALTER TABLE programs AUTO_INCREMENT = 1");
+
     // Insert admin user
-    await db.promise().query(
-      `INSERT IGNORE INTO users (id, email, password, full_name, user_type) 
+    await connection.execute(
+      `INSERT INTO users (id, email, password, full_name, user_type) 
        VALUES (?, ?, ?, ?, 'admin')`,
       [1, "admin@gmail.com", adminPassword, "Administrator"]
     );
 
-    // Insert sample users dengan password masing-masing
-    await db.promise().query(
-      `
-      INSERT IGNORE INTO users (id, email, password, full_name, phone, address, user_type) VALUES
-      (2, 'user1@gmail.com', ?, 'User 1', '08882124339', '', 'participant'),
-      (3, 'user2@gmail.com', ?, 'User 2', '083821612483', '', 'participant'),
-      (4, 'user3@gmail.com', ?, 'User 3', '08333333333', 'Jl. User 3', 'participant')
-    `,
-      [user1Password, user2Password, user3Password]
+    // Insert sample users
+    await connection.execute(
+      `INSERT INTO users (id, email, password, full_name, phone, address, user_type) VALUES
+      (?, ?, ?, ?, ?, ?, 'participant'),
+      (?, ?, ?, ?, ?, ?, 'participant'),
+      (?, ?, ?, ?, ?, ?, 'participant')`,
+      [
+        2,
+        "user1@gmail.com",
+        user1Password,
+        "User 1",
+        "08882124339",
+        "",
+        3,
+        "user2@gmail.com",
+        user2Password,
+        "User 2",
+        "083821612483",
+        "",
+        4,
+        "user3@gmail.com",
+        user3Password,
+        "User 3",
+        "08333333333",
+        "Jl. User 3",
+      ]
     );
 
     // Insert program categories
-    await db.promise().query(`
-      INSERT IGNORE INTO program_categories (id, name, description) VALUES
+    await connection.execute(`
+      INSERT INTO program_categories (id, name, description) VALUES
       (1, 'Regular', 'Program magang di bidang teknologi informasi dan pengembangan software'),
       (2, 'Hybrid', 'Program magang di bidang analisis data dan machine learning'),
       (3, 'Fast Track', 'Program magang di bidang pemasaran digital dan media sosial')
@@ -121,22 +162,10 @@ const seedData = async () => {
           ],
         }),
         timeline_json: JSON.stringify([
-          {
-            month: "Bulan 1",
-            title: "Dasar Bahasa & Adaptasi",
-          },
-          {
-            month: "Bulan 2",
-            title: "Pengembangan Bahasa",
-          },
-          {
-            month: "Bulan 3",
-            title: "Budaya & Persiapan Kerja",
-          },
-          {
-            month: "Bulan 4",
-            title: "Persiapan Akhir & Evaluasi",
-          },
+          { month: "Bulan 1", title: "Dasar Bahasa & Adaptasi" },
+          { month: "Bulan 2", title: "Pengembangan Bahasa" },
+          { month: "Bulan 3", title: "Budaya & Persiapan Kerja" },
+          { month: "Bulan 4", title: "Persiapan Akhir & Evaluasi" },
         ]),
         fee_details_json: JSON.stringify({
           training_fee_items: [
@@ -247,22 +276,10 @@ const seedData = async () => {
           ],
         }),
         timeline_json: JSON.stringify([
-          {
-            month: "Bulan 1",
-            title: "Dasar Bahasa & Adaptasi",
-          },
-          {
-            month: "Bulan 2",
-            title: "Pengembangan Bahasa",
-          },
-          {
-            month: "Bulan 3",
-            title: "Budaya & Persiapan Kerja",
-          },
-          {
-            month: "Bulan 4",
-            title: "Persiapan Akhir & Evaluasi",
-          },
+          { month: "Bulan 1", title: "Dasar Bahasa & Adaptasi" },
+          { month: "Bulan 2", title: "Pengembangan Bahasa" },
+          { month: "Bulan 3", title: "Budaya & Persiapan Kerja" },
+          { month: "Bulan 4", title: "Persiapan Akhir & Evaluasi" },
         ]),
         fee_details_json: JSON.stringify({
           training_fee_items: [
@@ -373,22 +390,10 @@ const seedData = async () => {
           ],
         }),
         timeline_json: JSON.stringify([
-          {
-            month: "Bulan 1",
-            title: "Dasar Bahasa & Adaptasi",
-          },
-          {
-            month: "Bulan 2",
-            title: "Pengembangan Bahasa",
-          },
-          {
-            month: "Bulan 3",
-            title: "Budaya & Persiapan Kerja",
-          },
-          {
-            month: "Bulan 4",
-            title: "Persiapan Akhir & Evaluasi",
-          },
+          { month: "Bulan 1", title: "Dasar Bahasa & Adaptasi" },
+          { month: "Bulan 2", title: "Pengembangan Bahasa" },
+          { month: "Bulan 3", title: "Budaya & Persiapan Kerja" },
+          { month: "Bulan 4", title: "Persiapan Akhir & Evaluasi" },
         ]),
         fee_details_json: JSON.stringify({
           training_fee_items: [
@@ -421,8 +426,8 @@ const seedData = async () => {
 
     // Insert semua program
     for (const program of programsData) {
-      await db.promise().query(
-        `INSERT IGNORE INTO programs (
+      await connection.execute(
+        `INSERT INTO programs (
           id, category_id, name, description, requirements, schedule, duration, 
           capacity, current_participants, status, contact_info, registration_deadline, 
           start_date, end_date, location, training_cost, departure_cost, installment_plan, 
@@ -471,4 +476,15 @@ const seedData = async () => {
   }
 };
 
-export default seedData;
+// Handle uncaught errors
+process.on("unhandledRejection", (err) => {
+  console.error("❌ Unhandled Promise Rejection:", err);
+  process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("❌ Uncaught Exception:", err);
+  process.exit(1);
+});
+
+seedData();
